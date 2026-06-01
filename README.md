@@ -1,4 +1,4 @@
-# JobCraft AI 🚀
+# NextOffer.AI 🚀
 
 **AI-Powered Job Hunting Platform** — Find your dream job in minutes with personalized resumes, cover letters, and cold emails.
 
