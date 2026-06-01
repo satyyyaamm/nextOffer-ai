@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+functions/node_modules/
+
+# Build
+build/
+.firebase/
+
+# Environment & secrets
+.env
+.env.local
+.env.*.local
+functions/.env
+functions/.env.*
+!functions/.env.example
+functions/.secret.local
+
+# Firebase (use .firebaserc.example; copy locally to .firebaserc)
+.firebaserc
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+firebase-debug.log
+
+# IDE
+.idea/
+.vscode/

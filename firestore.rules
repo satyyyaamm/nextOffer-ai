@@ -1,0 +1,35 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Users can read/write ONLY their own profile (login, tier display)
+    match /users/{userId} {
+      allow read, create, update: if request.auth != null && request.auth.uid == userId;
+      allow delete: if false;
+
+      // Resume text & AI docs stay server-side only
+      match /resumes/{document=**} {
+        allow read, write: if false;
+      }
+      match /documents/{document=**} {
+        allow read, write: if false;
+      }
+      match /jobKits/{document=**} {
+        allow read, write: if false;
+      }
+    }
+
+    // Search history & rate limits — backend only
+    match /searches/{document=**} {
+      allow read, write: if false;
+    }
+    match /rateLimits/{document=**} {
+      allow read, write: if false;
+    }
+
+    // Client error logs — backend only (logClientError callable)
+    match /clientErrors/{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

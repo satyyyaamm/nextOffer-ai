@@ -1,0 +1,20 @@
+{
+  "name": "jobcraft-functions",
+  "description": "JobCraft AI — secure Cloud Functions backend",
+  "engines": {
+    "node": "20"
+  },
+  "main": "index.js",
+  "scripts": {
+    "lint": "node -e \"process.exit(0)\"",
+    "serve": "firebase emulators:start --only functions",
+    "deploy": "firebase deploy --only functions"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.0",
+    "firebase-admin": "^12.7.0",
+    "firebase-functions": "^5.1.1",
+    "pdf-parse": "^1.1.1"
+  },
+  "private": true
+}

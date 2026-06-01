@@ -1,0 +1,15 @@
+{
+  "short_name": "NextOffer.ai",
+  "name": "NextOffer.ai — AI job applications",
+  "icons": [
+    {
+      "src": "logo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#F8FAFC",
+  "background_color": "#F8FAFC"
+}
