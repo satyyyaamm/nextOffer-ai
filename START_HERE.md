@@ -163,7 +163,7 @@ That's it! 5 minutes of setup.
 
 **PRO TIER ($9.99/month)**
 - Unlimited searches
-- Claude Sonnet AI (better quality)
+- Unlimited searches & generations (same Haiku AI model)
 - Batch downloads
 - Cost to you: ~$0.10/user/month
 - You profit: ~$9.89/user/month

@@ -138,7 +138,7 @@ function LandingNavbar() {
 
 function PricingCard({ plan, price, period, subtitle, features, highlighted, badge }) {
   return (
-    <div className={`lp-plan${highlighted ? " lp-plan--highlight" : ""}`}>
+    <div className={`lp-plan hover-lift${highlighted ? " lp-plan--highlight" : ""}`}>
       {badge && <span className="lp-plan__badge">{badge}</span>}
       <h3 className="lp-plan__name">{plan}</h3>
       <p className="lp-plan__price">
@@ -187,7 +187,7 @@ export function LandingPage({ initialError = "" }) {
   };
 
   return (
-    <div className="lp-page fade-up">
+    <div className="lp-page">
       <LandingNavbar />
 
       <main>
@@ -221,7 +221,7 @@ export function LandingPage({ initialError = "" }) {
                 <div className="lp-cta" id="cta">
                   <button
                     type="button"
-                    className="lp-cta__btn"
+                    className="lp-cta__btn btn-press"
                     onClick={() => handleLogin("hero")}
                     disabled={loading}
                   >

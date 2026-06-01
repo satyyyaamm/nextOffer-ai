@@ -42,9 +42,8 @@ const CHECKOUT_OPTS = {
   secrets: [lsApiKey, lsStoreId, lsVariantIdWeekly, lsVariantIdMonthly],
 };
 
-// Claude 3.5 Haiku/Sonnet IDs were retired — use current Haiku 4.5 / Sonnet 4.6
-const MODEL_FREE = "claude-haiku-4-5";
-const MODEL_PRO = "claude-sonnet-4-6";
+// Haiku 4.5 for all tiers (free + Pro) — lower cost than Sonnet
+const MODEL = "claude-haiku-4-5";
 
 const REGION_MAP = {
   "United States": { country: "us", language: "en", currency: "USD", symbol: "$" },
@@ -550,16 +549,72 @@ async function resolveResumeTextForUser(userId, userData) {
 }
 
 const GENERATION_GROUNDING_RULES =
-  "Use ONLY facts from the candidate's original resume and parsed profile. Tailor language to the target job. Do NOT invent employers, job titles, dates, degrees, certifications, or metrics not supported by the resume.";
+  "Use ONLY facts from the candidate's original resume and parsed profile (real employers, dates, degrees, metrics). Do NOT invent jobs, companies, education, or numbers. You MAY rewrite wording, reorder sections, shorten less relevant content, and retitle the headline for the target role when honest.";
+
+const ATS_RESUME_RULES = `
+ATS rules: Plain text only (no tables, columns, images, emoji, or markdown). Use simple section headings in ALL CAPS. Use hyphen bullets only, each line starting with "- " (ASCII hyphen, not special bullet symbols). Weave TARGET JOB keywords naturally — never keyword-stuff.`;
+
+const RESUME_TAILORING_RULES = `
+TAILORING (required — not a copy-paste):
+- This document must be REWRITTEN for the TARGET JOB. Do not reuse long phrases verbatim from the original resume.
+- Change the headline/title line to align with the target job title when it matches the candidate's background.
+- Rewrite every bullet with fresh phrasing; lead with achievements most relevant to this job.
+- Prioritize and expand matching experience; condense or omit projects/roles that do not support this application.
+- Order skills so job-relevant technologies appear first.
+- Include only sections that strengthen this application (e.g. skip "Additional Credentials" if empty or irrelevant).`;
+
+function formatContactLine(profile) {
+  const parts = [];
+  if (profile.location) parts.push(profile.location);
+  const contacts = [];
+  if (profile.email) contacts.push(profile.email);
+  if (profile.phone) contacts.push(profile.phone);
+  const links = [];
+  if (profile.linkedin) links.push("LinkedIn");
+  if (profile.github) links.push("GitHub");
+  if (profile.portfolio) links.push("Portfolio");
+  else if (profile.website) links.push("Portfolio");
+  return { locationLine: parts.join(" · "), contactLine: contacts.join(" | "), linksLine: links.join(" | ") };
+}
 
 function buildDocumentPrompts(documentType, contextBlock, profile) {
   const name = profile.name || "Candidate";
+  const { locationLine, contactLine, linksLine } = formatContactLine(profile);
+  const contactHints = [
+    locationLine ? `Location (from profile): ${locationLine}` : "",
+    contactLine ? `Contact (from profile): ${contactLine}` : "",
+    linksLine ? `Links (from profile): ${linksLine}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
 
   const prompts = {
     resume: {
-      system: `You are an expert resume writer. ${GENERATION_GROUNDING_RULES}`,
-      user: `${contextBlock}\n\nWrite a tailored resume section for ${name} applying to this job.\nFormat as markdown with:\n## Resume Summary (2-3 sentences, aligned to the job)\n## Key Achievements (5-7 bullet points — each must reflect real experience from the resume, rewritten for this role)\n\nDo not add a full employment history table unless it is clearly derivable from the resume.`,
-      maxTokens: 2500,
+      system: `You are an expert ATS resume writer. ${GENERATION_GROUNDING_RULES} ${ATS_RESUME_RULES} ${RESUME_TAILORING_RULES}`,
+      user: `${contextBlock}
+${contactHints ? `\nPARSED CONTACT (use if not in original resume):\n${contactHints}\n` : ""}
+
+Write a complete, job-tailored resume for ${name} for the TARGET JOB above.
+
+Output plain text ONLY. Build the best resume for THIS job — flexible structure, not a rigid template.
+
+Suggested flow (include only what helps; omit empty sections):
+- Name on line 1
+- Headline aligned to the target job (not necessarily identical to the uploaded resume title)
+- Contact line(s): location, email, phone on one line; links on the next line as plain labels, e.g. GitHub | LinkedIn | Portfolio (no raw URLs, no brackets)
+- PROFESSIONAL SUMMARY — 3-4 sentences rewritten for this role; mirror language from the job description
+- TECHNICAL SKILLS and/or CORE SKILLS — group with lines like: - Mobile: Flutter, Dart, ...
+- PROFESSIONAL EXPERIENCE — for each relevant role: Job title, then Company · Location | dates, then 3-6 bullets starting with "- "
+  Put the most relevant role first in emphasis (more bullets); trim unrelated work
+- EDUCATION — if present in source
+- Optional: PROJECTS, CERTIFICATIONS, or ADDITIONAL — only if they add value for this job
+
+Rules:
+- Every bullet MUST start with "- " (ASCII hyphen + space)
+- Rewrite bullets; do NOT copy sentences unchanged from the original resume
+- Use metrics and facts only from the source resume
+- No emoji, no markdown, no special Unicode bullets`,
+      maxTokens: 4096,
     },
     cover_letter: {
       system: `You are an expert cover letter writer. ${GENERATION_GROUNDING_RULES}`,
@@ -574,6 +629,23 @@ function buildDocumentPrompts(documentType, contextBlock, profile) {
   };
 
   return prompts[documentType];
+}
+
+/** Plain-text cleanup for storage and PDF (ASCII-safe bullets). */
+function normalizeResumeOutput(text) {
+  return String(text || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/●/g, "-")
+    .replace(/[•◦▪▸►]/g, "-")
+    .replace(/[–—]/g, "-")
+    .replace(/^[\s]*[●•]\s*/gm, "- ")
+    .replace(/```[a-z]*\n?/gi, "")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\[([^\]]+)\]/g, "$1")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 function resetApplicationKit(kit) {
@@ -1103,7 +1175,6 @@ function basicMatchScore(job, profile) {
 }
 
 async function scoreJobBatchWithAI(batch, profile, isFree, apiKey, indexOffset) {
-  const model = isFree ? MODEL_FREE : MODEL_PRO;
   const anthropic = getAnthropic(apiKey);
   const jobSummaries = batch.map((j, i) => ({
     index: i,
@@ -1113,7 +1184,7 @@ async function scoreJobBatchWithAI(batch, profile, isFree, apiKey, indexOffset) 
   }));
 
   const response = await createAnthropicMessage(anthropic, {
-    model,
+    model: MODEL,
     max_tokens: 1200,
     system:
       "You rank job matches. Return ONLY valid JSON array: [{\"index\":0,\"match_score\":85}] with one entry per job index and match_score 0-100.",
@@ -1307,12 +1378,12 @@ exports.parseResume = onCall(
     await checkRateLimit(userId, "parseResume");
 
     const anthropic = getAnthropic(anthropicApiKey.value());
-    const model = isFree ? MODEL_FREE : MODEL_PRO;
 
     const response = await createAnthropicMessage(anthropic, {
-      model,
+      model: MODEL,
       max_tokens: 800,
-      system: "Parse resumes. Return ONLY JSON: {\"name\":\"string\",\"title\":\"string\",\"experience_years\":number,\"skills\":[\"skill1\"],\"summary\":\"string\",\"top_strength\":\"string\"}",
+      system:
+        'Parse resumes. Return ONLY JSON: {"name":"string","title":"string","experience_years":number,"skills":["skill1"],"summary":"string","top_strength":"string","email":"string or empty","phone":"string or empty","location":"string or empty","linkedin":"url or empty","github":"url or empty","portfolio":"url or empty","website":"url or empty"}. Extract contact links and location from the resume when present; use empty string if missing.',
       messages: [{ role: "user", content: `Parse this resume:\n"""${resumeText}"""` }],
     });
 
@@ -1498,7 +1569,7 @@ exports.searchJobs = onCall(
 // ─── Callable: Generate Document ─────────────────────────────────────────────
 
 exports.generateDocument = onCall(
-  { ...AI_OPTS, timeoutSeconds: 120 },
+  { ...AI_OPTS, timeoutSeconds: 180 },
   async (request) => {
     const user = await ensureUserExists(request);
     const userId = user.id;
@@ -1539,17 +1610,19 @@ exports.generateDocument = onCall(
     const contextBlock = buildGenerationContext(profile, resumeText, job);
     const promptSpec = buildDocumentPrompts(documentType, contextBlock, profile);
 
-    const model = user.tier === "pro" ? MODEL_PRO : MODEL_FREE;
     const anthropic = getAnthropic(anthropicApiKey.value());
 
     const response = await createAnthropicMessage(anthropic, {
-      model,
+      model: MODEL,
       max_tokens: promptSpec.maxTokens,
       system: promptSpec.system,
       messages: [{ role: "user", content: promptSpec.user }],
     });
 
-    const content = response.content[0].text;
+    let content = response.content[0].text;
+    if (documentType === "resume") {
+      content = normalizeResumeOutput(content);
+    }
 
     await saveJobKitDocument(userId, job, documentType, content);
 
@@ -1561,7 +1634,7 @@ exports.generateDocument = onCall(
       documentType,
       contentLength: content.length,
       timestamp: admin.firestore.FieldValue.serverTimestamp(),
-      model,
+      model: MODEL,
       usedResumeText: resumeText.length >= 50,
     });
 

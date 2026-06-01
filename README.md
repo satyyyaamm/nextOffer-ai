@@ -57,7 +57,7 @@
 **PRO TIER ($9.99/month)**
 - Unlimited searches
 - Unlimited resumes
-- Uses Claude Sonnet (better quality)
+- Same Claude Haiku model as free (unlimited usage)
 - You pay: ~$0.10/user/month
 - You profit: $9.89/user/month
 
@@ -72,7 +72,7 @@
 **Assumptions:**
 - 5% Pro conversion rate (conservative)
 - Free users cost $0.01/month (Claude Haiku)
-- Pro users cost $0.10/month (limited Claude Sonnet)
+- Pro users cost more mainly from volume (unlimited searches/generations), same Haiku model
 - Firebase hosting: included (free tier at scale)
 - JSearch API: $30-50/month (shared across all users)
 

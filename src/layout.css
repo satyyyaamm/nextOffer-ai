@@ -7,6 +7,10 @@
   --pad-right: max(var(--page-gutter), env(safe-area-inset-right, 0px));
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 html,
 body,
 #root {
@@ -15,6 +19,12 @@ body,
   margin: 0;
   padding: 0;
   overflow-x: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
 }
 
 .app-root {
@@ -622,13 +632,18 @@ body,
   justify-content: center;
   gap: 12px;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition:
+    background 0.15s ease,
+    transform 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.2s ease;
   width: 100%;
   min-width: 260px;
 }
 
 .lp-cta__btn:hover:not(:disabled) {
   background: var(--c-accent-hover);
+  box-shadow: 0 8px 24px rgba(15, 118, 110, 0.28);
+  transform: translateY(-1px);
 }
 
 .lp-cta__btn:disabled {
@@ -688,6 +703,10 @@ body,
 
 .lp-plan {
   position: relative;
+  transition:
+    transform 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.2s ease,
+    border-color 0.15s ease;
   background: var(--c-surface);
   border: 1px solid var(--c-border);
   border-radius: 16px;
@@ -1184,13 +1203,17 @@ body,
 }
 
 .job-card-btn {
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @media (min-width: 768px) {
   .job-card-btn:hover {
     border-color: #0F766E !important;
     box-shadow: 0 4px 16px rgba(15, 23, 42, 0.08) !important;
+    transform: translateY(-2px);
   }
 
   .job-card-btn .job-card-title {
@@ -1483,12 +1506,16 @@ body,
   background: #FFFFFF;
   border: 1px solid #E2E8F0;
   cursor: pointer;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .kit-library-item:hover {
   border-color: #0F766E;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+  transform: translateX(2px);
 }
 
 .kit-library-item--active {

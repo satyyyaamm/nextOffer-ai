@@ -1,0 +1,371 @@
+/* Motion system — subtle, performant, respects reduced motion */
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes backdropIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@keyframes gentleFloat {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes progressFill {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* ─── Entrance utilities ─── */
+.animate-in,
+.fade-up {
+  animation: fadeUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-fade {
+  animation: fadeIn 0.4s ease both;
+}
+
+.animate-scale {
+  animation: scaleIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.screen-view {
+  animation: fadeUp 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+  width: 100%;
+}
+
+.view-enter {
+  animation: fadeUp 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Stagger children (up to 12) */
+.stagger-children > * {
+  animation: fadeUp 0.48s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.stagger-children > *:nth-child(1) {
+  animation-delay: 0.04s;
+}
+.stagger-children > *:nth-child(2) {
+  animation-delay: 0.1s;
+}
+.stagger-children > *:nth-child(3) {
+  animation-delay: 0.16s;
+}
+.stagger-children > *:nth-child(4) {
+  animation-delay: 0.22s;
+}
+.stagger-children > *:nth-child(5) {
+  animation-delay: 0.28s;
+}
+.stagger-children > *:nth-child(6) {
+  animation-delay: 0.34s;
+}
+.stagger-children > *:nth-child(7) {
+  animation-delay: 0.4s;
+}
+.stagger-children > *:nth-child(8) {
+  animation-delay: 0.46s;
+}
+.stagger-children > *:nth-child(9) {
+  animation-delay: 0.52s;
+}
+.stagger-children > *:nth-child(10) {
+  animation-delay: 0.58s;
+}
+.stagger-children > *:nth-child(11) {
+  animation-delay: 0.64s;
+}
+.stagger-children > *:nth-child(12) {
+  animation-delay: 0.7s;
+}
+
+/* Job list cards */
+.jobs-list-body .job-card-btn {
+  animation: fadeUp 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.jobs-list-body .job-card-btn:nth-child(1) {
+  animation-delay: 0.02s;
+}
+.jobs-list-body .job-card-btn:nth-child(2) {
+  animation-delay: 0.06s;
+}
+.jobs-list-body .job-card-btn:nth-child(3) {
+  animation-delay: 0.1s;
+}
+.jobs-list-body .job-card-btn:nth-child(4) {
+  animation-delay: 0.14s;
+}
+.jobs-list-body .job-card-btn:nth-child(5) {
+  animation-delay: 0.18s;
+}
+.jobs-list-body .job-card-btn:nth-child(6) {
+  animation-delay: 0.22s;
+}
+.jobs-list-body .job-card-btn:nth-child(7) {
+  animation-delay: 0.26s;
+}
+.jobs-list-body .job-card-btn:nth-child(8) {
+  animation-delay: 0.3s;
+}
+.jobs-list-body .job-card-btn:nth-child(n + 9) {
+  animation-delay: 0.34s;
+}
+
+/* ─── Interactive polish ─── */
+.hover-lift {
+  transition:
+    transform 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.2s ease,
+    border-color 0.15s ease;
+}
+
+@media (hover: hover) {
+  .hover-lift:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.1);
+  }
+}
+
+.hover-lift:active {
+  transform: translateY(0);
+}
+
+.btn-press {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.btn-press:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+/* ─── Skeleton shimmer ─── */
+.skeleton-shimmer {
+  background: linear-gradient(90deg, #e2e8f0 0%, #f1f5f9 45%, #e2e8f0 90%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+/* ─── Modals & overlays ─── */
+.modal-overlay {
+  animation: backdropIn 0.22s ease both;
+}
+
+.modal-panel {
+  animation: scaleIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.data-privacy-modal__backdrop {
+  animation: backdropIn 0.22s ease both;
+}
+
+.data-privacy-modal__panel {
+  animation: scaleIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.app-mobile-nav-backdrop {
+  animation: backdropIn 0.22s ease both;
+}
+
+.cookie-consent__inner {
+  animation: slideUp 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* ─── Landing page motion ─── */
+.lp-page {
+  position: relative;
+}
+
+.lp-page::before {
+  content: "";
+  position: fixed;
+  inset: -20% -10% auto;
+  height: 55vh;
+  background: radial-gradient(ellipse 70% 60% at 50% 0%, rgba(15, 118, 110, 0.12), transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+  animation: gentleFloat 8s ease-in-out infinite;
+}
+
+.lp-page > * {
+  position: relative;
+  z-index: 1;
+}
+
+.lp-nav {
+  animation: fadeIn 0.5s ease both;
+}
+
+.lp-hero__left > * {
+  animation: fadeUp 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.lp-hero__tag {
+  animation-delay: 0.05s;
+}
+.lp-hero__title {
+  animation-delay: 0.12s;
+}
+.lp-hero__desc {
+  animation-delay: 0.2s;
+}
+.lp-hero__flow {
+  animation-delay: 0.28s;
+}
+.lp-cta {
+  animation-delay: 0.36s;
+}
+.lp-trust {
+  animation-delay: 0.44s;
+}
+
+.lp-pricing-grid > * {
+  animation: fadeUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.lp-pricing-grid > *:nth-child(1) {
+  animation-delay: 0.15s;
+}
+.lp-pricing-grid > *:nth-child(2) {
+  animation-delay: 0.25s;
+}
+.lp-pricing-grid > *:nth-child(3) {
+  animation-delay: 0.35s;
+}
+
+.lp-process__step {
+  animation: fadeUp 0.48s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.lp-process__step:nth-child(1) {
+  animation-delay: 0.08s;
+}
+.lp-process__step:nth-child(2) {
+  animation-delay: 0.16s;
+}
+.lp-process__step:nth-child(3) {
+  animation-delay: 0.24s;
+}
+.lp-process__step:nth-child(4) {
+  animation-delay: 0.32s;
+}
+
+.lp-process__icon {
+  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (hover: hover) {
+  .lp-process__step:hover .lp-process__icon {
+    transform: scale(1.06);
+  }
+}
+
+/* Step progress connector */
+.step-progress-line {
+  transform-origin: left center;
+  animation: progressFill 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Match score ring pulse on appear */
+.match-badge-pop {
+  animation: scaleIn 0.35s cubic-bezier(0.22, 1, 0.36, 1) 0.2s both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .lp-page::before {
+    animation: none;
+  }
+
+  .hover-lift:hover {
+    transform: none;
+  }
+}

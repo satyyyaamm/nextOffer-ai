@@ -296,7 +296,7 @@ export function HowItWorksSteps({ compact = false, row = false }) {
       </h2>
       <ol className={`landing-steps-list${isCompact ? " landing-steps-list--compact" : ""}`}>
         {HOW_IT_WORKS_STEPS.map(({ step, icon: Icon, title, description }) => (
-          <li key={step} className={`landing-step-card${isCompact ? " landing-step-card--compact" : ""}`}>
+          <li key={step} className={`landing-step-card hover-lift${isCompact ? " landing-step-card--compact" : ""}`}>
             <div className="landing-step-card__icon" aria-hidden="true">
               <Icon size={isCompact ? 18 : 20} color={C.accent} />
             </div>
@@ -381,6 +381,7 @@ export function StepProgress({ current }) {
             </div>
             {i < STEPS.length - 1 && (
               <div
+                className={done ? "step-progress-line" : ""}
                 style={{
                   flex: 1,
                   height: 2,
@@ -399,20 +400,20 @@ export function StepProgress({ current }) {
 
 export function JobCardSkeleton() {
   return (
-    <div style={{ ...cardStyle, padding: 16, marginBottom: 10 }}>
+    <div className="animate-in" style={{ ...cardStyle, padding: 16, marginBottom: 10 }}>
       <div style={{ display: "flex", gap: 12 }}>
         <div
+          className="skeleton-shimmer"
           style={{
             width: 44,
             height: 44,
             borderRadius: 10,
-            background: C.border,
-            animation: "pulse 1.5s ease-in-out infinite",
+            flexShrink: 0,
           }}
         />
         <div style={{ flex: 1 }}>
-          <div style={{ height: 14, width: "70%", background: C.border, borderRadius: 4, marginBottom: 8 }} />
-          <div style={{ height: 12, width: "50%", background: C.border, borderRadius: 4 }} />
+          <div className="skeleton-shimmer" style={{ height: 14, width: "70%", borderRadius: 4, marginBottom: 8 }} />
+          <div className="skeleton-shimmer" style={{ height: 12, width: "50%", borderRadius: 4 }} />
         </div>
       </div>
     </div>
@@ -516,6 +517,7 @@ export function KitDocumentViewer({
   genError = "",
   readOnly = false,
   canGenerate = false,
+  isPro = false,
   onGenerate,
   onRegenerate,
   onPromptUpgrade,
@@ -527,6 +529,7 @@ export function KitDocumentViewer({
   company = "",
 }) {
   const [copied, setCopied] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
 
   const kitSteps = KIT_TABS.map((t) => ({
     ...t,
@@ -543,11 +546,28 @@ export function KitDocumentViewer({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleDownload = () => {
+  const handleDownloadTxt = () => {
     if (!content) return;
     const slug = [company, jobTitle].filter(Boolean).join("-").replace(/[^a-z0-9-]+/gi, "-").toLowerCase() || "document";
     downloadTextFile(`${activeTab.filePrefix}-${slug}.txt`, content);
   };
+
+  const handleDownloadPdf = async () => {
+    if (!content || tab !== "resume") return;
+    setPdfBusy(true);
+    try {
+      const slug = [company, jobTitle].filter(Boolean).join("-").replace(/[^a-z0-9-]+/gi, "-").toLowerCase() || "resume";
+      const { downloadResumePdf, normalizeResumePlainText } = await import("./resumePdf");
+      downloadResumePdf(normalizeResumePlainText(content), `resume-${slug}.pdf`);
+    } catch (err) {
+      console.error("PDF export failed:", err);
+      alert("Could not create PDF. Try copying the text or use a desktop browser.");
+    } finally {
+      setPdfBusy(false);
+    }
+  };
+
+  const isResumeTab = tab === "resume";
 
   return (
     <div className="kit-document-viewer">
@@ -618,7 +638,9 @@ export function KitDocumentViewer({
         ) : content ? (
           <>
             <p style={{ fontSize: 11, color: C.muted, marginBottom: 10 }}>Saved — you can leave and come back anytime.</p>
-            <div style={{ color: C.text, whiteSpace: "pre-wrap", fontSize: 13, lineHeight: 1.65 }}>{content}</div>
+            <div className="kit-resume-preview" style={{ color: C.text, whiteSpace: "pre-wrap", fontSize: 13, lineHeight: 1.65, fontFamily: "Georgia, 'Times New Roman', serif" }}>
+              {tab === "resume" ? content.replace(/●/g, "•") : content}
+            </div>
           </>
         ) : readOnly ? (
           <p style={{ color: C.sub, fontSize: 13 }}>No {activeTab.label.toLowerCase()} saved for this job.</p>
@@ -644,9 +666,26 @@ export function KitDocumentViewer({
             <button type="button" onClick={handleCopy} style={primaryBtnStyle()} disabled={loadingGen}>
               {copied ? "Copied!" : "Copy to clipboard"}
             </button>
-            <button type="button" onClick={handleDownload} style={outlineBtnStyle} disabled={loadingGen}>
-              Download .txt
-            </button>
+            {isResumeTab && isPro && (
+              <button
+                type="button"
+                onClick={handleDownloadPdf}
+                style={outlineBtnStyle}
+                disabled={loadingGen || pdfBusy}
+              >
+                {pdfBusy ? "Creating PDF…" : "Download PDF"}
+              </button>
+            )}
+            {isResumeTab && !isPro && (
+              <p style={{ fontSize: 11, color: C.muted, margin: 0, lineHeight: 1.5 }}>
+                PDF download is available on Pro. Free plan: copy the resume text above.
+              </p>
+            )}
+            {!isResumeTab && (
+              <button type="button" onClick={handleDownloadTxt} style={outlineBtnStyle} disabled={loadingGen}>
+                Download .txt
+              </button>
+            )}
             {onRegenerate && !readOnly && (
               <button
                 type="button"
@@ -694,7 +733,10 @@ export function KitDocumentViewer({
 export { KIT_TABS };
 
 export const FilterSection = ({ label, children, fullWidth = false }) => (
-  <div className={fullWidth ? "filter-section filter-section--full" : "filter-section"} style={{ ...cardStyle, padding: 16, marginBottom: 0 }}>
+  <div
+    className={`filter-section hover-lift${fullWidth ? " filter-section--full" : ""}`}
+    style={{ ...cardStyle, padding: 16, marginBottom: 0 }}
+  >
     <div style={{ fontSize: 12, fontWeight: 600, color: C.sub, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 12 }}>{label}</div>
     {children}
   </div>
@@ -716,8 +758,10 @@ export const PageTitle = ({ title, subtitle }) => (
   </div>
 );
 
-export const PageMain = ({ children, variant = "default", className = "" }) => (
-  <div className={`page-main ${variant === "form" ? "page-main--form" : ""} ${variant === "full" ? "page-main--full" : ""} ${className}`.trim()}>
+export const PageMain = ({ children, variant = "default", className = "", enter = false }) => (
+  <div
+    className={`page-main ${variant === "form" ? "page-main--form" : ""} ${variant === "full" ? "page-main--full" : ""} ${enter ? "view-enter" : ""} ${className}`.trim()}
+  >
     {children}
   </div>
 );

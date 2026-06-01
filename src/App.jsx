@@ -86,10 +86,6 @@ const GlobalStyle = () => (
     button{cursor:pointer;border:none;background:transparent;font-family:${font};}
     button:active:not(:disabled){transform:scale(0.98);}
     a{color:${C.accent};}
-    @keyframes spin{to{transform:rotate(360deg)}}
-    @keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
-    @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
-    .fade-up{animation:fadeUp .45s ease both;}
   `}</style>
 );
 
@@ -115,6 +111,7 @@ const Chip = ({ label, active, onClick, icon: Icon }) => (
       fontWeight: 500,
       whiteSpace: "nowrap",
       boxShadow: active ? "none" : C.shadowSm,
+      transition: "border-color 0.2s ease, background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease",
     }}
   >
     {Icon && <Icon size={14} color={active ? C.accent : C.sub} />}
@@ -268,7 +265,7 @@ const LandingScreen = ({ initialError = "" }) => <LandingPage initialError={init
 // ─── Checkout success toast ──────────────────────────────────────────────────
 
 const CheckoutSuccessBanner = ({ onDismiss }) => (
-  <div style={{ position: "fixed", top: 16, left: 16, right: 16, zIndex: 100, background: C.greenGlow, border: `1px solid ${C.success}44`, borderRadius: 14, padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: C.shadowMd, maxWidth: 448, margin: "0 auto" }}>
+  <div className="animate-scale" style={{ position: "fixed", top: 16, left: 16, right: 16, zIndex: 100, background: C.greenGlow, border: `1px solid ${C.success}44`, borderRadius: 14, padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: C.shadowMd, maxWidth: 448, margin: "0 auto" }}>
     <span style={{ color: C.success, fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 8 }}>
       <IconCheck size={16} color={C.success} /> Welcome to Pro! Unlimited searches unlocked.
     </span>
@@ -746,6 +743,7 @@ const DashboardScreen = ({ userProfile, onProfileUpdate, showProBanner, onDismis
       )}
 
       {screen === "resume" && (
+        <div key="resume" className="screen-view">
         <ResumeScreen
           isPro={isPro}
           loading={loading}
@@ -756,8 +754,10 @@ const DashboardScreen = ({ userProfile, onProfileUpdate, showProBanner, onDismis
           onCancel={hasSavedProfile ? () => setScreen("filters") : undefined}
           onLogout={handleLogout}
         />
+        </div>
       )}
       {screen === "filters" && (
+        <div key="filters" className="screen-view">
         <FiltersScreen
           profile={profile}
           isPro={isPro}
@@ -768,8 +768,10 @@ const DashboardScreen = ({ userProfile, onProfileUpdate, showProBanner, onDismis
           onUpdateResume={() => setScreen("resume")}
           onLogout={handleLogout}
         />
+        </div>
       )}
       {screen === "jobs" && (
+        <div key="jobs" className="screen-view">
         <JobsScreen
           key={jobsListKey}
           jobs={jobs}
@@ -786,8 +788,10 @@ const DashboardScreen = ({ userProfile, onProfileUpdate, showProBanner, onDismis
           onBack={() => setScreen("filters")}
           onLogout={handleLogout}
         />
+        </div>
       )}
       {screen === "kit" && (
+        <div key="kit" className="screen-view">
         <ApplicationKitScreen
           profile={profile}
           isPro={isPro}
@@ -799,8 +803,10 @@ const DashboardScreen = ({ userProfile, onProfileUpdate, showProBanner, onDismis
           onProfileUpdate={onProfileUpdate}
           onLogout={handleLogout}
         />
+        </div>
       )}
       {screen === "detail" && selectedJob && (
+        <div key="detail" className="screen-view">
         <JobDetailScreen
           job={selectedJob}
           currencySymbol={currencySymbol}
@@ -817,6 +823,7 @@ const DashboardScreen = ({ userProfile, onProfileUpdate, showProBanner, onDismis
           kitJobId={userProfile?.applicationKit?.kitKey || userProfile?.applicationKit?.jobId}
           onPromptUpgrade={openUpgrade}
         />
+        </div>
       )}
     </AppShell>
   );
@@ -1046,7 +1053,7 @@ const FiltersScreen = ({ profile, isPro, searchLimitReached, loading, onSearch, 
         </div>
 
         <div className="filters-main-col">
-          <div className="filters-grid">
+          <div className="filters-grid stagger-children">
             <FilterSection label="Workplace">
               <p style={{ fontSize: 11, color: C.muted, marginBottom: 10 }}>Select one or more</p>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -1395,6 +1402,7 @@ const ApplicationKitScreen = ({
                   loadingGen={loadingGen}
                   genError={genError}
                   readOnly={false}
+                  isPro={isPro}
                   canGenerate={Boolean(profile?.title) && (isPro || !kitUsed)}
                   onGenerate={regenerateDoc}
                   onRegenerate={isPro ? regenerateDoc : undefined}
@@ -1404,7 +1412,7 @@ const ApplicationKitScreen = ({
                     !isPro
                       ? kitUsed
                         ? "You've used your free generation this month. Upgrade to Pro to generate or regenerate."
-                        : "Free: one document generation per month (any job). Regenerate requires Pro."
+                        : "Free: one document generation per month (copy text only). Pro: download resume as PDF."
                       : ""
                   }
                   applyUrl={applyUrl}
@@ -1575,6 +1583,7 @@ const JobsScreen = ({
                       </div>
                       <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8 }}>
                         <span
+                          className="match-badge-pop"
                           style={{
                             fontSize: 11,
                             fontWeight: 700,
@@ -1927,7 +1936,7 @@ const JobDetailScreen = ({
 
   const freeTierNote = !isPro
     ? canGenerate
-      ? "Free: one document generation per month (any job). Regenerate requires Pro."
+      ? "Free: one document generation per month (copy text). Pro: full ATS resume PDF download."
       : isKitJob
         ? "You've used your free generation this month. View your saved document or upgrade to Pro."
         : "You've used your free generation this month. Upgrade to Pro for more."
@@ -1984,6 +1993,7 @@ const JobDetailScreen = ({
       loadingKit={loadingKit}
       loadingGen={loading}
       genError={genError}
+      isPro={isPro}
       canGenerate={canGenerate}
       onGenerate={requestDoc}
       onRegenerate={isPro ? regenerateDoc : undefined}
@@ -2102,6 +2112,7 @@ const UpgradeModal = ({ reason, onUpgrade, onClose, processing }) => {
 
   return (
     <div
+      className="modal-overlay"
       style={{
         position: "fixed",
         inset: 0,
@@ -2115,6 +2126,7 @@ const UpgradeModal = ({ reason, onUpgrade, onClose, processing }) => {
       }}
     >
       <div
+        className="modal-panel"
         style={{
           background: C.surface,
           borderRadius: 20,

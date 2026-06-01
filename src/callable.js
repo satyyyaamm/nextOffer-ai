@@ -9,6 +9,20 @@ import { track, errorCodeFromErr } from "./analytics";
 const REGION = "us-central1";
 const PROJECT_ID = process.env.REACT_APP_FIREBASE_PROJECT_ID;
 
+/** Client wait time — stay under Cloud Function timeoutSeconds (see functions/index.js). */
+const TIMEOUT_MS = {
+  getUserProfile: 30_000,
+  parseResume: 100_000,
+  searchJobs: 180_000,
+  generateDocument: 170_000,
+  getJobKit: 30_000,
+  listJobKits: 30_000,
+  createCheckoutSession: 60_000,
+  deleteUserData: 120_000,
+  logClientError: 10_000,
+  default: 30_000,
+};
+
 async function ensureSignedIn() {
   const user = auth.currentUser;
   if (!user) {
@@ -69,8 +83,10 @@ function reportApiFailure(functionName, err) {
   });
 }
 
-export async function callFunction(functionName, data = {}, timeoutMs = 25000) {
+export async function callFunction(functionName, data = {}, timeoutMs = TIMEOUT_MS.default) {
   await ensureSignedIn();
+
+  const run = () => withTimeout(callViaFetch(functionName, data), timeoutMs, functionName);
 
   try {
     const fn = httpsCallable(functions, functionName);
@@ -84,9 +100,13 @@ export async function callFunction(functionName, data = {}, timeoutMs = 25000) {
       reportApiFailure(functionName, wrapped);
       throw wrapped;
     }
-    if (msg.includes("Failed to fetch") || msg.includes("Network Error") || err?.code === "functions/internal") {
+    const isTimeout = /timed out after/i.test(msg);
+    if (
+      !isTimeout &&
+      (msg.includes("Failed to fetch") || msg.includes("Network Error") || err?.code === "functions/internal")
+    ) {
       try {
-        return await callViaFetch(functionName, data);
+        return await run();
       } catch (fetchErr) {
         reportApiFailure(functionName, fetchErr);
         throw fetchErr;
@@ -97,13 +117,13 @@ export async function callFunction(functionName, data = {}, timeoutMs = 25000) {
   }
 }
 
-export const logClientError = (data) => callFunction("logClientError", data, 10000);
+export const logClientError = (data) => callFunction("logClientError", data, TIMEOUT_MS.logClientError);
 
-export const getUserProfile = () => callFunction("getUserProfile");
-export const parseResume = (data) => callFunction("parseResume", data);
-export const searchJobs = (data) => callFunction("searchJobs", data, 120000);
-export const generateDocument = (data) => callFunction("generateDocument", data);
-export const getJobKit = (data) => callFunction("getJobKit", data);
-export const listJobKits = () => callFunction("listJobKits");
-export const createCheckoutSession = (data) => callFunction("createCheckoutSession", data);
-export const deleteUserData = (data) => callFunction("deleteUserData", data, 120000);
+export const getUserProfile = () => callFunction("getUserProfile", {}, TIMEOUT_MS.getUserProfile);
+export const parseResume = (data) => callFunction("parseResume", data, TIMEOUT_MS.parseResume);
+export const searchJobs = (data) => callFunction("searchJobs", data, TIMEOUT_MS.searchJobs);
+export const generateDocument = (data) => callFunction("generateDocument", data, TIMEOUT_MS.generateDocument);
+export const getJobKit = (data) => callFunction("getJobKit", data, TIMEOUT_MS.getJobKit);
+export const listJobKits = () => callFunction("listJobKits", {}, TIMEOUT_MS.listJobKits);
+export const createCheckoutSession = (data) => callFunction("createCheckoutSession", data, TIMEOUT_MS.createCheckoutSession);
+export const deleteUserData = (data) => callFunction("deleteUserData", data, TIMEOUT_MS.deleteUserData);

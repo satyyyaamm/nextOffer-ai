@@ -248,7 +248,7 @@ Common issues are usually one of:
 - ✓ Complete job hunting AI platform
 - ✓ Google OAuth authentication
 - ✓ Free & Pro tier system
-- ✓ Claude API integration (Haiku for free, Sonnet for Pro)
+- ✓ Claude API integration (Haiku 4.5 for all tiers)
 - ✓ Stripe payments
 - ✓ Firebase backend
 - ✓ Production-ready UI
