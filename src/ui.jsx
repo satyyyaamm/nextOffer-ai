@@ -1,7 +1,30 @@
-import { useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { C, font, cardStyle } from "./theme";
 import { AppLogo } from "./brand";
-import { IconLock, IconShield, IconCreditCard, IconCheck, IconUpload, IconSearch, IconBuilding, IconExternalLink } from "./icons";
+import { IconLock, IconShield, IconCreditCard, IconCheck, IconUpload, IconSearch, IconBuilding, IconExternalLink, IconMenu, IconX } from "./icons";
+import { setAnalyticsConsent, shouldShowConsentBanner, subscribeAnalyticsConsent } from "./consent";
+import { initAnalyticsAfterConsent } from "./analytics";
+
+const MobileNavContext = createContext(null);
+
+export function useMobileNav() {
+  return useContext(MobileNavContext);
+}
+
+export function MobileNavToggle({ className = "" }) {
+  const nav = useMobileNav();
+  if (!nav) return null;
+  return (
+    <button
+      type="button"
+      className={`mobile-nav-toggle mobile-only ${className}`.trim()}
+      onClick={nav.openNav}
+      aria-label="Open navigation menu"
+    >
+      <IconMenu size={20} color={C.text} />
+    </button>
+  );
+}
 
 export const LegalFooter = ({ style = {} }) => (
   <footer
@@ -22,11 +45,170 @@ export const LegalFooter = ({ style = {} }) => (
     <a href="/terms.html" target="_blank" rel="noopener noreferrer" style={{ color: C.accent, textDecoration: "none", marginRight: 12 }}>
       Terms
     </a>
-    <a href="mailto:support@nextoffer.ai" style={{ color: C.accent, textDecoration: "none" }}>
-      support@nextoffer.ai
+    <a href="mailto:ranurainfotech@gmail.com" style={{ color: C.accent, textDecoration: "none" }}>
+      ranurainfotech@gmail.com
     </a>
   </footer>
 );
+
+export function CookieConsentBanner() {
+  const [visible, setVisible] = useState(() => shouldShowConsentBanner());
+
+  useEffect(() => {
+    return subscribeAnalyticsConsent(() => setVisible(shouldShowConsentBanner()));
+  }, []);
+
+  if (!visible) return null;
+
+  const accept = () => {
+    setAnalyticsConsent(true);
+    setVisible(false);
+    initAnalyticsAfterConsent();
+  };
+
+  const decline = () => {
+    setAnalyticsConsent(false);
+    setVisible(false);
+  };
+
+  return (
+    <div className="cookie-consent" role="dialog" aria-label="Cookie preferences">
+      <div className="cookie-consent__inner">
+        <p className="cookie-consent__text">
+          We use optional analytics cookies (Google Analytics) to understand how the product is used. We do not use them for ads.
+          See our <a href="/privacy.html" target="_blank" rel="noopener noreferrer">Privacy Policy</a>.
+        </p>
+        <div className="cookie-consent__actions">
+          <button type="button" className="cookie-consent__btn cookie-consent__btn--secondary" onClick={decline}>
+            Decline
+          </button>
+          <button type="button" className="cookie-consent__btn cookie-consent__btn--primary" onClick={accept}>
+            Accept analytics
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function DataPrivacyModal({ open, onClose, onDeleteResume, onDeleteAccount, loading, error }) {
+  const [confirmAccount, setConfirmAccount] = useState(false);
+
+  useEffect(() => {
+    if (!open) setConfirmAccount(false);
+  }, [open]);
+
+  if (!open) return null;
+
+  return (
+    <div className="data-privacy-modal" role="dialog" aria-modal="true" aria-labelledby="data-privacy-title">
+      <button type="button" className="data-privacy-modal__backdrop" aria-label="Close" onClick={onClose} />
+      <div className="data-privacy-modal__panel">
+        <h2 id="data-privacy-title" style={{ fontSize: 18, fontWeight: 700, color: C.text, marginBottom: 8 }}>
+          Privacy &amp; data
+        </h2>
+        <p style={{ fontSize: 13, color: C.sub, lineHeight: 1.55, marginBottom: 16 }}>
+          Manage your data or read our policies. Deletion is permanent and cannot be undone.
+        </p>
+        <p style={{ fontSize: 13, marginBottom: 16 }}>
+          <a href="/privacy.html" target="_blank" rel="noopener noreferrer" style={{ color: C.accent, marginRight: 12 }}>
+            Privacy Policy
+          </a>
+          <a href="/terms.html" target="_blank" rel="noopener noreferrer" style={{ color: C.accent }}>
+            Terms of Service
+          </a>
+        </p>
+
+        {error && (
+          <p style={{ fontSize: 13, color: C.danger, marginBottom: 12, lineHeight: 1.5 }}>{error}</p>
+        )}
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
+          <button
+            type="button"
+            disabled={loading}
+            onClick={onDeleteResume}
+            style={{
+              width: "100%",
+              padding: "12px 14px",
+              borderRadius: 10,
+              border: `1px solid ${C.border}`,
+              background: C.surface,
+              color: C.text,
+              fontSize: 13,
+              fontWeight: 600,
+              textAlign: "left",
+            }}
+          >
+            Delete resume &amp; profile data
+            <span style={{ display: "block", fontSize: 11, fontWeight: 400, color: C.muted, marginTop: 4 }}>
+              Removes uploaded resumes and parsed profile. Keeps your account and saved application kits.
+            </span>
+          </button>
+
+          {!confirmAccount ? (
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => setConfirmAccount(true)}
+              style={{
+                width: "100%",
+                padding: "12px 14px",
+                borderRadius: 10,
+                border: `1px solid ${C.danger}44`,
+                background: `${C.danger}08`,
+                color: C.danger,
+                fontSize: 13,
+                fontWeight: 600,
+                textAlign: "left",
+              }}
+            >
+              Delete account
+              <span style={{ display: "block", fontSize: 11, fontWeight: 400, color: C.sub, marginTop: 4 }}>
+                Permanently deletes your account, kits, and sign-in.
+              </span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={loading}
+              onClick={onDeleteAccount}
+              style={{
+                width: "100%",
+                padding: "12px 14px",
+                borderRadius: 10,
+                border: `1px solid ${C.danger}`,
+                background: C.danger,
+                color: "#fff",
+                fontSize: 13,
+                fontWeight: 600,
+              }}
+            >
+              {loading ? "Deleting…" : "Confirm delete account"}
+            </button>
+          )}
+        </div>
+
+        <p style={{ fontSize: 12, color: C.muted, lineHeight: 1.5, marginBottom: 16 }}>
+          You can also email{" "}
+          <a href="mailto:ranurainfotech@gmail.com" style={{ color: C.accent }}>
+            ranurainfotech@gmail.com
+          </a>{" "}
+          to request access, correction, or deletion.
+        </p>
+
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={loading}
+          style={{ width: "100%", padding: "10px 14px", borderRadius: 10, background: C.bg, color: C.sub, fontSize: 13, fontWeight: 600, border: `1px solid ${C.border}` }}
+        >
+          Close
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export const TrustBadge = ({ icon: Icon, text }) => (
   <div style={{ display: "flex", alignItems: "flex-start", gap: 10, fontSize: 13, color: C.sub, lineHeight: 1.5 }}>
@@ -551,13 +733,17 @@ export function AppSidebar({
   screen,
   onNavigate,
   onLogout,
+  onClose,
+  onOpenDataPrivacy,
   hasProfile,
   hasJobs,
   isPro,
   userEmail,
   kitCount = 0,
+  variant = "desktop",
 }) {
   const activeScreen = screen === "detail" ? "jobs" : screen;
+  const isDrawer = variant === "mobile";
 
   const canNav = (id) => {
     if (id === "resume") return true;
@@ -567,15 +753,35 @@ export function AppSidebar({
     return false;
   };
 
+  const handleNavigate = (id) => {
+    if (!canNav(id)) return;
+    onNavigate(id);
+    onClose?.();
+  };
+
   return (
-    <aside className="app-sidebar">
-      <div className="app-sidebar__brand">
-        <AppLogo size={40} style={{ marginBottom: 12, boxShadow: C.shadowSm }} />
-        <div style={{ fontSize: 18, fontWeight: 700, color: C.text, letterSpacing: -0.3 }}>
-          NextOffer<span style={{ color: C.brandHighlight }}>.ai</span>
+    <aside className={`app-sidebar${isDrawer ? " app-sidebar--drawer" : ""}`}>
+      {isDrawer ? (
+        <div className="app-sidebar__drawer-head">
+          <div className="app-sidebar__drawer-brand">
+            <AppLogo size={32} style={{ boxShadow: C.shadowSm, flexShrink: 0 }} />
+            <span style={{ fontSize: 16, fontWeight: 700, color: C.text }}>
+              NextOffer<span style={{ color: C.brandHighlight }}>.ai</span>
+            </span>
+          </div>
+          <button type="button" className="app-sidebar__close" onClick={onClose} aria-label="Close menu">
+            <IconX size={20} color={C.text} />
+          </button>
         </div>
-        <div style={{ fontSize: 12, color: C.sub, marginTop: 4 }}>Land your next offer</div>
-      </div>
+      ) : (
+        <div className="app-sidebar__brand">
+          <AppLogo size={40} style={{ marginBottom: 12, boxShadow: C.shadowSm }} />
+          <div style={{ fontSize: 18, fontWeight: 700, color: C.text, letterSpacing: -0.3 }}>
+            NextOffer<span style={{ color: C.brandHighlight }}>.ai</span>
+          </div>
+          <div style={{ fontSize: 12, color: C.sub, marginTop: 4 }}>Land your next offer</div>
+        </div>
+      )}
 
       <nav className="app-sidebar__nav" aria-label="Main navigation">
         {SIDEBAR_NAV.map(({ id, label, icon: Icon }) => {
@@ -587,7 +793,7 @@ export function AppSidebar({
               type="button"
               className={`sidebar-nav-item${active ? " sidebar-nav-item--active" : ""}`}
               disabled={!enabled}
-              onClick={() => enabled && onNavigate(id)}
+              onClick={() => handleNavigate(id)}
             >
               <Icon size={18} color={active ? C.accent : C.sub} />
               {label}
@@ -614,7 +820,20 @@ export function AppSidebar({
         )}
         <button
           type="button"
-          onClick={onLogout}
+          className="sidebar-privacy-link"
+          onClick={() => {
+            onOpenDataPrivacy?.();
+            onClose?.();
+          }}
+        >
+          Privacy &amp; data
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            onLogout();
+            onClose?.();
+          }}
           style={{ width: "100%", padding: "10px 14px", borderRadius: 10, background: C.bg, color: C.sub, fontSize: 13, fontWeight: 600, border: `1px solid ${C.border}` }}
         >
           Logout
@@ -628,6 +847,7 @@ export function AppShell({
   screen,
   onNavigate,
   onLogout,
+  onOpenDataPrivacy,
   hasProfile,
   hasJobs,
   isPro,
@@ -635,19 +855,58 @@ export function AppShell({
   kitCount = 0,
   children,
 }) {
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  const openNav = useCallback(() => setMobileNavOpen(true), []);
+  const closeNav = useCallback(() => setMobileNavOpen(false), []);
+
+  const mobileNav = useMemo(() => ({ openNav, closeNav }), [openNav, closeNav]);
+
+  useEffect(() => {
+    closeNav();
+  }, [screen, closeNav]);
+
+  useEffect(() => {
+    if (!mobileNavOpen) return undefined;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [mobileNavOpen]);
+
+  const sidebarProps = {
+    screen,
+    onNavigate,
+    onLogout,
+    onOpenDataPrivacy,
+    hasProfile,
+    hasJobs,
+    isPro,
+    userEmail,
+    kitCount,
+  };
+
   return (
-    <div className="app-shell">
-      <AppSidebar
-        screen={screen}
-        onNavigate={onNavigate}
-        onLogout={onLogout}
-        hasProfile={hasProfile}
-        hasJobs={hasJobs}
-        isPro={isPro}
-        userEmail={userEmail}
-        kitCount={kitCount}
-      />
-      <div className="app-main">{children}</div>
-    </div>
+    <MobileNavContext.Provider value={mobileNav}>
+      <div className="app-shell">
+        <AppSidebar {...sidebarProps} variant="desktop" />
+        {mobileNavOpen && (
+          <button
+            type="button"
+            className="app-mobile-nav-backdrop mobile-only"
+            aria-label="Close navigation menu"
+            onClick={closeNav}
+          />
+        )}
+        <div
+          className={`app-mobile-nav mobile-only${mobileNavOpen ? " app-mobile-nav--open" : ""}`}
+          aria-hidden={!mobileNavOpen}
+        >
+          <AppSidebar {...sidebarProps} variant="mobile" onClose={closeNav} />
+        </div>
+        <div className="app-main">{children}</div>
+      </div>
+    </MobileNavContext.Provider>
   );
 }

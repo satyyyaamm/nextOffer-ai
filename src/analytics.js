@@ -4,6 +4,7 @@
  */
 import { logEvent, setUserId, setUserProperties } from "firebase/analytics";
 import { getAnalyticsInstance } from "./firebase";
+import { hasAnalyticsConsent } from "./consent";
 
 const DEBUG = process.env.REACT_APP_ANALYTICS_DEBUG === "true";
 const MAX_PARAM_LEN = 100;
@@ -45,6 +46,10 @@ function sanitizeParams(params) {
 }
 
 export async function track(eventName, params = {}) {
+  if (!hasAnalyticsConsent()) {
+    if (DEBUG) console.debug("[analytics skipped]", eventName, params);
+    return;
+  }
   const name = String(eventName).slice(0, 40);
   const analytics = await getReady();
   if (!analytics) {
@@ -61,6 +66,7 @@ export async function track(eventName, params = {}) {
 }
 
 export async function identifyUser(uid, props = {}) {
+  if (!hasAnalyticsConsent()) return;
   const analytics = await getReady();
   if (!analytics || !uid) return;
   try {
@@ -73,6 +79,7 @@ export async function identifyUser(uid, props = {}) {
 }
 
 export async function clearUser() {
+  if (!hasAnalyticsConsent()) return;
   const analytics = await getReady();
   if (!analytics) return;
   try {
@@ -150,8 +157,9 @@ export function errorCodeFromErr(err) {
   return "error";
 }
 
-/** Once per browser session */
+/** Once per browser session (only after analytics consent). */
 export function trackAppOpenOnce() {
+  if (!hasAnalyticsConsent()) return;
   try {
     const key = "no_app_open_tracked";
     if (sessionStorage.getItem(key)) return;
@@ -160,4 +168,13 @@ export function trackAppOpenOnce() {
   } catch {
     track("app_open");
   }
+}
+
+/** Call after user grants consent to init GA and record first open. */
+export async function initAnalyticsAfterConsent() {
+  if (!hasAnalyticsConsent()) return;
+  const { resetAnalyticsInstance, getAnalyticsInstance } = await import("./firebase");
+  resetAnalyticsInstance();
+  await getAnalyticsInstance();
+  trackAppOpenOnce();
 }

@@ -3,6 +3,7 @@ import { getAnalytics, isSupported } from "firebase/analytics";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getFunctions } from "firebase/functions";
+import { hasAnalyticsConsent, isAnalyticsConfigured } from "./consent";
 
 const required = [
   "REACT_APP_FIREBASE_API_KEY",
@@ -40,6 +41,11 @@ const app = initializeApp(firebaseConfig);
 
 let analyticsInstancePromise = null;
 
+/** Clear cached Analytics instance (e.g. after user grants consent). */
+export function resetAnalyticsInstance() {
+  analyticsInstancePromise = null;
+}
+
 /**
  * Returns Analytics instance when measurement ID is set and browser supports it.
  */
@@ -47,7 +53,7 @@ export function getAnalyticsInstance() {
   if (typeof window === "undefined") {
     return Promise.resolve(null);
   }
-  if (!process.env.REACT_APP_FIREBASE_MEASUREMENT_ID) {
+  if (!isAnalyticsConfigured() || !hasAnalyticsConsent()) {
     return Promise.resolve(null);
   }
   if (!analyticsInstancePromise) {

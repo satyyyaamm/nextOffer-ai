@@ -58,6 +58,25 @@ export const REGIONS = [
   { label: "Germany", flag: "🇩🇪", currency: "EUR", symbol: "€" },
 ];
 
+/** Popular cities shown after a country is selected on the filters screen. */
+export const TOP_CITIES_BY_REGION = {
+  "United States": [
+    "New York",
+    "San Francisco",
+    "Los Angeles",
+    "Chicago",
+    "Seattle",
+    "Austin",
+    "Boston",
+    "Denver",
+  ],
+  India: ["Bengaluru", "Mumbai", "Hyderabad", "Delhi", "Pune", "Chennai", "Kolkata", "Gurgaon"],
+  "United Kingdom": ["London", "Manchester", "Birmingham", "Edinburgh", "Bristol", "Leeds", "Glasgow"],
+  Canada: ["Toronto", "Vancouver", "Montreal", "Calgary", "Ottawa", "Edmonton"],
+  Australia: ["Sydney", "Melbourne", "Brisbane", "Perth", "Adelaide", "Canberra"],
+  Germany: ["Berlin", "Munich", "Frankfurt", "Hamburg", "Cologne", "Stuttgart"],
+};
+
 export const btnPrimary = {
   width: "100%",
   padding: "14px 16px",

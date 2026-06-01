@@ -273,6 +273,49 @@ function jobKitsCollection(userId) {
   return db.collection("users").doc(userId).collection("jobKits");
 }
 
+/** Delete documents from a collection in batches (max 400 per commit). */
+async function deleteCollectionDocs(collectionRef, batchSize = 400) {
+  while (true) {
+    const snapshot = await collectionRef.limit(batchSize).get();
+    if (snapshot.empty) break;
+    const batch = db.batch();
+    snapshot.docs.forEach((doc) => batch.delete(doc.ref));
+    await batch.commit();
+    if (snapshot.size < batchSize) break;
+  }
+}
+
+async function deleteAllUserFirestoreData(userId) {
+  const userRef = db.collection("users").doc(userId);
+  for (const sub of ["resumes", "jobKits", "documents"]) {
+    await deleteCollectionDocs(userRef.collection(sub));
+  }
+  const searchHistoryRef = db.collection("searches").doc(userId).collection("history");
+  await deleteCollectionDocs(searchHistoryRef);
+  try {
+    await db.collection("searches").doc(userId).delete();
+  } catch {
+    /* optional parent doc */
+  }
+  try {
+    await db.collection("rateLimits").doc(userId).delete();
+  } catch {
+    /* optional */
+  }
+  await userRef.delete();
+}
+
+async function deleteUserResumeData(userId) {
+  const userRef = db.collection("users").doc(userId);
+  await deleteCollectionDocs(userRef.collection("resumes"));
+  await userRef.update({
+    parsedProfile: admin.firestore.FieldValue.delete(),
+    parsedProfileUpdatedAt: admin.firestore.FieldValue.delete(),
+    latestResumeId: admin.firestore.FieldValue.delete(),
+    hasStoredResumeText: false,
+  });
+}
+
 function jobKitRefByKey(userId, kitKey) {
   return jobKitsCollection(userId).doc(kitKey);
 }
@@ -705,6 +748,48 @@ function normalizeFilterList(value, fallback) {
   return fallback;
 }
 
+const CITY_ALIASES = {
+  bangalore: "bengaluru",
+  gurugram: "gurgaon",
+  "new york city": "new york",
+  nyc: "new york",
+  "san fran": "san francisco",
+  "washington dc": "washington",
+  "national capital territory": "delhi",
+  ncr: "delhi",
+};
+
+function normalizeCityKey(city) {
+  const key = String(city || "")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ");
+  return CITY_ALIASES[key] || key;
+}
+
+function cityMatchesSelection(job, selectedCities) {
+  const cities = Array.isArray(selectedCities) ? selectedCities.filter(Boolean) : [];
+  if (cities.length === 0) return true;
+
+  const locationParts = [job.job_city, job.job_state, job.job_country].filter(Boolean);
+  const haystack = locationParts.map(normalizeCityKey).join(" ");
+
+  return cities.some((selected) => {
+    const needle = normalizeCityKey(selected);
+    if (!needle) return false;
+    return locationParts.some((part) => {
+      const partKey = normalizeCityKey(part);
+      return partKey === needle || partKey.includes(needle) || needle.includes(partKey);
+    }) || haystack.includes(needle);
+  });
+}
+
+function resolveJSearchLocation(filters) {
+  const cities = Array.isArray(filters.cities) ? filters.cities.filter(Boolean) : [];
+  if (cities.length === 1) return cities[0];
+  return null;
+}
+
 function inferWorkplaceType(job) {
   if (job.job_is_remote === true) return "Remote";
   const wt = String(job.job_workplace_type || "").toLowerCase();
@@ -799,7 +884,7 @@ function buildSearchQueryVariants(profile) {
   return variants.slice(0, MAX_QUERY_VARIANTS);
 }
 
-async function requestJSearchRaw(query, filters, region, apiKey, { apiPage = 1, numPages = 1 } = {}) {
+async function requestJSearchRaw(query, filters, region, apiKey, { apiPage = 1, numPages = 1, locationOverride = null } = {}) {
   const workplaces = normalizeFilterList(filters.workplace, ["Remote", "Hybrid", "On-site"]);
   const jobTypes = normalizeFilterList(filters.jobType, ["Full-time", "Part-time"]);
   const onlyRemote =
@@ -821,6 +906,9 @@ async function requestJSearchRaw(query, filters, region, apiKey, { apiPage = 1, 
   else if (wantsPart && !wantsFull) params.set("employment_types", "PARTTIME");
 
   if (onlyRemote) params.set("work_from_home", "true");
+
+  const location = locationOverride || resolveJSearchLocation(filters);
+  if (location) params.set("location", location);
 
   const response = await fetch(`https://jsearch.p.rapidapi.com/search?${params}`, {
     headers: {
@@ -857,6 +945,7 @@ function applyJobFilters(rawList, filters, region, datePostedOverride) {
 
   let jobs = rawList
     .filter((job) => isJobWithinMaxAge(job.job_posted_at_datetime_utc, maxAgeHours))
+    .filter((job) => cityMatchesSelection(job, filters.cities))
     .filter((job) => jobMatchesSalaryFilter(job, filterAnnual, region))
     .filter((job) => matchesJobTypeFilter(job, jobTypes))
     .map((job, index) => mapJSearchJob(job, index, region))
@@ -865,6 +954,7 @@ function applyJobFilters(rawList, filters, region, datePostedOverride) {
   if (jobs.length === 0 && rawList.length > 0) {
     console.warn(`Salary/workplace filters removed all ${rawList.length} jobs; returning unfiltered mapped list`);
     jobs = rawList
+      .filter((job) => cityMatchesSelection(job, filters.cities))
       .filter((job) => matchesJobTypeFilter(job, jobTypes))
       .map((job, index) => mapJSearchJob(job, index, region))
       .filter((job) => matchesWorkplaceFilter(job, workplaces));
@@ -873,6 +963,7 @@ function applyJobFilters(rawList, filters, region, datePostedOverride) {
   if (jobs.length === 0 && rawList.length > 0) {
     jobs = rawList
       .filter((job) => isJobWithinMaxAge(job.job_posted_at_datetime_utc, maxAgeHours))
+      .filter((job) => cityMatchesSelection(job, filters.cities))
       .map((job, index) => mapJSearchJob(job, index, region));
   }
 
@@ -905,6 +996,25 @@ async function fetchJSearchJobs(profile, filters, apiKey, options = {}) {
     if (!primaryQuery || batch.length > 0) primaryQuery = query;
     if (fixedQuery) break;
     if (batch.length >= JSEARCH_PAGE_SIZE) break;
+  }
+
+  const selectedCities = Array.isArray(filters.cities) ? filters.cities.filter(Boolean) : [];
+  if (!fixedQuery && selectedCities.length > 1 && rawList.length < MIN_JOBS_TARGET) {
+    for (const city of selectedCities.slice(0, 4)) {
+      if (rawList.length >= MIN_JOBS_TARGET) break;
+      const cityFilters = { ...filters, cities: [city] };
+      for (const query of queries.slice(0, 2)) {
+        const batch = await requestJSearchRaw(query, cityFilters, region, apiKey, { apiPage, numPages });
+        for (const job of batch) {
+          const id = job.job_id || `${job.job_title}-${job.employer_name}-${job.job_city}`;
+          if (!seen.has(id)) {
+            seen.add(id);
+            rawList.push(job);
+          }
+        }
+        if (batch.length >= JSEARCH_PAGE_SIZE) break;
+      }
+    }
   }
 
   const requestedDate = filters.datePosted || "week";
@@ -1317,7 +1427,7 @@ exports.searchJobs = onCall(
         insufficientResults: true,
         error: "Insufficient results",
         message:
-          "No jobs matched these filters. Your free search wasn't used — try a broader region, workplace, or salary range.",
+          "No jobs matched these filters. Your free search wasn't used — try fewer cities, a broader country, workplace, or salary range.",
         jobs: [],
         total: 0,
         apiPage: fetchedPage || pageNum,
@@ -1712,15 +1822,27 @@ exports.logClientError = onCall(BASE_OPTS, async (request) => {
   return { success: true };
 });
 
-// ─── Callable: Get Resumes (metadata only — no raw text returned) ─────────────
+// ─── Callable: Delete user data (resume or full account) ─────────────────────
 
-exports.getResumes = onCall(BASE_OPTS, async (request) => {
+exports.deleteUserData = onCall({ ...BASE_OPTS, timeoutSeconds: 120 }, async (request) => {
   const userId = requireAuth(request);
-  const snapshot = await db.collection("users").doc(userId).collection("resumes").orderBy("uploadedAt", "desc").limit(10).get();
+  const scope = request.data?.scope === "resume" ? "resume" : "account";
 
-  return snapshot.docs.map((doc) => ({
-    id: doc.id,
-    parsed: doc.data().parsed,
-    uploadedAt: doc.data().uploadedAt,
-  }));
+  if (scope === "resume") {
+    await deleteUserResumeData(userId);
+    return { success: true, scope: "resume", message: "Resume and parsed profile data deleted." };
+  }
+
+  await deleteAllUserFirestoreData(userId);
+  try {
+    await admin.auth().deleteUser(userId);
+  } catch (err) {
+    console.error("Auth user delete failed (Firestore already cleared):", err.message);
+    throw new HttpsError(
+      "internal",
+      "Account data was deleted but sign-in could not be removed. Contact ranurainfotech@gmail.com if you still see your account."
+    );
+  }
+
+  return { success: true, scope: "account", message: "Account and associated data deleted." };
 });

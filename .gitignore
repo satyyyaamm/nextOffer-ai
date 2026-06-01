@@ -25,7 +25,6 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
-firebase-debug.log
 
 # IDE
 .idea/

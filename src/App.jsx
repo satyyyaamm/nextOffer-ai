@@ -10,6 +10,7 @@ import {
   getJobKit as getJobKitFn,
   listJobKits as listJobKitsFn,
   createCheckoutSession as createCheckoutFn,
+  deleteUserData as deleteUserDataFn,
 } from "./callable";
 import { loadOrCreateUserProfile } from "./userProfile";
 import {
@@ -24,7 +25,7 @@ import {
   upgradeReasonKey,
 } from "./analytics";
 import { setCrashScreen } from "./crashReporting";
-import { C, font, cardStyle, REGIONS } from "./theme";
+import { C, font, cardStyle, REGIONS, TOP_CITIES_BY_REGION } from "./theme";
 import {
   IconSearch,
   IconUpload,
@@ -46,6 +47,9 @@ import {
   PageMain,
   PageTitle,
   MobileOnly,
+  MobileNavToggle,
+  CookieConsentBanner,
+  DataPrivacyModal,
   KitDocumentViewer,
 } from "./ui";
 import { AppLogo } from "./brand";
@@ -124,6 +128,12 @@ function toggleMultiSelect(current, value) {
     const next = current.filter((v) => v !== value);
     return next.length > 0 ? next : current;
   }
+  return [...current, value];
+}
+
+/** Toggle without forcing a selection — used for optional filters like city. */
+function toggleOptionalMultiSelect(current, value) {
+  if (current.includes(value)) return current.filter((v) => v !== value);
   return [...current, value];
 }
 
@@ -364,6 +374,9 @@ const DashboardScreen = ({ userProfile, onProfileUpdate, showProBanner, onDismis
   const [processingPayment, setProcessingPayment] = useState(false);
   const [currencySymbol, setCurrencySymbol] = useState("$");
   const [kitCount, setKitCount] = useState(0);
+  const [dataPrivacyOpen, setDataPrivacyOpen] = useState(false);
+  const [deletingData, setDeletingData] = useState(false);
+  const [deleteDataError, setDeleteDataError] = useState("");
 
   const isPro = userProfile?.tier === "pro";
   const searchesUsed = userProfile?.searches?.count || 0;
@@ -418,6 +431,48 @@ const DashboardScreen = ({ userProfile, onProfileUpdate, showProBanner, onDismis
     signOut(auth);
   };
 
+  const handleDeleteResumeData = async () => {
+    if (
+      !window.confirm(
+        "Delete all uploaded resumes and parsed profile data? Your account and saved application kits will remain. This cannot be undone."
+      )
+    ) {
+      return;
+    }
+    setDeletingData(true);
+    setDeleteDataError("");
+    try {
+      await deleteUserDataFn({ scope: "resume" });
+      setProfile(null);
+      setJobs([]);
+      setSelectedJob(null);
+      setGenerated({});
+      setDataPrivacyOpen(false);
+      await onProfileUpdate();
+      setScreen("resume");
+      track("data_delete", { scope: "resume" });
+    } catch (err) {
+      setDeleteDataError(callableErrorMessage(err));
+    } finally {
+      setDeletingData(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    setDeletingData(true);
+    setDeleteDataError("");
+    try {
+      await deleteUserDataFn({ scope: "account" });
+      track("data_delete", { scope: "account" });
+      clearUser();
+      setDataPrivacyOpen(false);
+      await signOut(auth);
+    } catch (err) {
+      setDeleteDataError(callableErrorMessage(err));
+      setDeletingData(false);
+    }
+  };
+
   const runJobSearch = async (profileData, filtersData) => {
     const result = await searchJobsFn({ profile: profileData, filters: filtersData });
     const data = result.data || {};
@@ -438,7 +493,7 @@ const DashboardScreen = ({ userProfile, onProfileUpdate, showProBanner, onDismis
     const jobList = data.jobs || [];
     if (jobList.length === 0) {
       track("search_empty", { reason: "no_matches" });
-      alert("No jobs matched these filters. Your free search was not used — try a broader region or salary range.");
+      alert("No jobs matched these filters. Your free search was not used — try fewer cities, a broader country, or a wider salary range.");
       setScreen("filters");
       return false;
     }
@@ -662,12 +717,24 @@ const DashboardScreen = ({ userProfile, onProfileUpdate, showProBanner, onDismis
       screen={screen}
       onNavigate={setScreen}
       onLogout={handleLogout}
+      onOpenDataPrivacy={() => {
+        setDeleteDataError("");
+        setDataPrivacyOpen(true);
+      }}
       hasProfile={hasSavedProfile}
       hasJobs={jobs.length > 0}
       isPro={isPro}
       userEmail={auth.currentUser?.email || ""}
       kitCount={kitCount}
     >
+      <DataPrivacyModal
+        open={dataPrivacyOpen}
+        onClose={() => !deletingData && setDataPrivacyOpen(false)}
+        onDeleteResume={handleDeleteResumeData}
+        onDeleteAccount={handleDeleteAccount}
+        loading={deletingData}
+        error={deleteDataError}
+      />
       {showProBanner && <CheckoutSuccessBanner onDismiss={onDismissProBanner} />}
       {showUpgrade && (
         <UpgradeModal
@@ -906,6 +973,8 @@ const FiltersScreen = ({ profile, isPro, searchLimitReached, loading, onSearch, 
   const [jobType, setJobType] = useState(["Full-time", "Part-time"]);
   const [datePosted, setDatePosted] = useState("week");
   const [region, setRegion] = useState(REGIONS[0]);
+  const [cities, setCities] = useState([]);
+  const topCities = TOP_CITIES_BY_REGION[region.label] || [];
   const isIndia = region.label === "India";
   const salaryMin = isIndia ? 3 : 20;
   const salaryMax = isIndia ? 60 : 250;
@@ -914,14 +983,21 @@ const FiltersScreen = ({ profile, isPro, searchLimitReached, loading, onSearch, 
     setSalary(isIndia ? [6, 25] : [40, 150]);
   }, [isIndia]);
 
-  return (
-    <PageMain>
-      <MobileOnly>
-        <Header title="Search jobs" onLogout={onLogout} />
-        <StepProgress current="filters" />
-      </MobileOnly>
-      <PageTitle title="Search jobs" subtitle="Set filters to find roles that match your profile." />
+  useEffect(() => {
+    setCities([]);
+  }, [region.label]);
 
+  return (
+    <PageMain variant="full">
+      <div className="filters-screen-header">
+        <MobileOnly>
+          <Header title="Search jobs" onLogout={onLogout} />
+          <StepProgress current="filters" />
+        </MobileOnly>
+        <PageTitle title="Search jobs" subtitle="Set filters to find roles that match your profile." />
+      </div>
+
+      <div className="filters-screen-content">
       <div className="filters-layout">
         <div className="filters-sidebar-col">
           {profile && (
@@ -950,17 +1026,7 @@ const FiltersScreen = ({ profile, isPro, searchLimitReached, loading, onSearch, 
           )}
 
           {!isPro && (
-            <div
-              style={{
-                background: searchLimitReached ? `${C.warning}14` : C.surface,
-                border: `1px solid ${searchLimitReached ? `${C.warning}44` : C.border}`,
-                borderRadius: 12,
-                padding: "12px 14px",
-                fontSize: 13,
-                color: searchLimitReached ? C.warning : C.sub,
-                lineHeight: 1.55,
-              }}
-            >
+            <div className={`filters-screen-notice${searchLimitReached ? " filters-screen-notice--warning" : " filters-screen-notice--info"}`}>
               {searchLimitReached ? (
                 <>
                   {UPGRADE_MESSAGES.search} You can still open past results and your application kit.
@@ -996,11 +1062,35 @@ const FiltersScreen = ({ profile, isPro, searchLimitReached, loading, onSearch, 
               </div>
             </FilterSection>
 
-            <FilterSection label="Region">
-              <select value={region.label} onChange={(e) => setRegion(REGIONS.find((r) => r.label === e.target.value))}
-                style={{ width: "100%", background: C.surface, border: `1.5px solid ${C.border}`, borderRadius: 10, padding: 10, color: C.text, fontSize: 14 }}>
-                {REGIONS.map((r) => <option key={r.label} value={r.label}>{r.flag} {r.label}</option>)}
+            <FilterSection label="Country">
+              <select
+                value={region.label}
+                onChange={(e) => setRegion(REGIONS.find((r) => r.label === e.target.value))}
+                style={{ width: "100%", background: C.surface, border: `1.5px solid ${C.border}`, borderRadius: 10, padding: 10, color: C.text, fontSize: 14 }}
+              >
+                {REGIONS.map((r) => (
+                  <option key={r.label} value={r.label}>
+                    {r.flag} {r.label}
+                  </option>
+                ))}
               </select>
+              {topCities.length > 0 && (
+                <>
+                  <p style={{ fontSize: 11, color: C.muted, marginTop: 12, marginBottom: 10 }}>
+                    Top cities — optional. Select one or more, or search the whole country.
+                  </p>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {topCities.map((city) => (
+                      <Chip
+                        key={city}
+                        label={city}
+                        active={cities.includes(city)}
+                        onClick={() => setCities((prev) => toggleOptionalMultiSelect(prev, city))}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
             </FilterSection>
 
             <FilterSection label="Job Type">
@@ -1051,7 +1141,7 @@ const FiltersScreen = ({ profile, isPro, searchLimitReached, loading, onSearch, 
                   onPromptUpgrade(UPGRADE_MESSAGES.search);
                   return;
                 }
-                onSearch({ workplace, salary, jobType, datePosted, region });
+                onSearch({ workplace, salary, jobType, datePosted, region, cities });
               }}
               disabled={loading}
               style={primaryBtnStyle(loading)}
@@ -1073,6 +1163,7 @@ const FiltersScreen = ({ profile, isPro, searchLimitReached, loading, onSearch, 
             </button>
           </div>
         </div>
+      </div>
       </div>
     </PageMain>
   );
@@ -1230,30 +1321,37 @@ const ApplicationKitScreen = ({
   );
 
   return (
-    <PageMain>
-      <MobileOnly>
-        <Header title="Application kit" onLogout={onLogout} />
-      </MobileOnly>
-      <PageTitle title="Application kit" subtitle="All your saved resumes, cover letters, and emails." />
+    <PageMain variant="full">
+      <div className="kit-screen-header">
+        <MobileOnly>
+          <Header title="Application kit" onLogout={onLogout} />
+        </MobileOnly>
+        <PageTitle title="Application kit" subtitle="All your saved resumes, cover letters, and emails." />
+      </div>
 
+      <div className="kit-screen-content">
       {loadingList ? (
-        <div style={{ display: "flex", alignItems: "center", gap: 10, color: C.sub, padding: 24 }}>
+        <div className="kit-screen-body kit-screen-body--loading">
           <Spinner /> Loading saved kits…
         </div>
       ) : listError ? (
-        <div style={{ ...cardStyle, padding: 20, textAlign: "center" }}>
-          <p style={{ color: C.red, marginBottom: 12 }}>{listError}</p>
-          <button type="button" onClick={loadList} style={outlineBtnStyle}>Retry</button>
+        <div className="kit-screen-body">
+          <div className="kit-screen-panel" style={{ textAlign: "center" }}>
+            <p style={{ color: C.red, marginBottom: 12 }}>{listError}</p>
+            <button type="button" onClick={loadList} style={outlineBtnStyle}>Retry</button>
+          </div>
         </div>
       ) : kitList.length === 0 ? (
-        <div style={{ ...cardStyle, padding: 32, textAlign: "center" }}>
-          <p style={{ color: C.text, fontWeight: 600, marginBottom: 8 }}>No application kits yet</p>
-          <p style={{ color: C.sub, fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>
-            Search jobs and open a listing to generate your tailored resume, cover letter, and email.
-          </p>
-          <button type="button" onClick={onNavigateToJobs} style={primaryBtnStyle()}>
-            <IconSearch size={18} color="#fff" /> Go to job search
-          </button>
+        <div className="kit-screen-body">
+          <div className="kit-screen-panel" style={{ textAlign: "center" }}>
+            <p style={{ color: C.text, fontWeight: 600, marginBottom: 8 }}>No application kits yet</p>
+            <p style={{ color: C.sub, fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>
+              Search jobs and open a listing to generate your tailored resume, cover letter, and email.
+            </p>
+            <button type="button" onClick={onNavigateToJobs} style={primaryBtnStyle()}>
+              <IconSearch size={18} color="#fff" /> Go to job search
+            </button>
+          </div>
         </div>
       ) : (
         <div className="kit-library-layout">
@@ -1319,6 +1417,7 @@ const ApplicationKitScreen = ({
           </div>
         </div>
       )}
+      </div>
     </PageMain>
   );
 };
@@ -1356,12 +1455,15 @@ const JobsScreen = ({
       <div className="jobs-screen-header">
         <MobileOnly>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ fontSize: 22, fontWeight: 700, color: C.text }}>Job listings</div>
-              <div style={{ fontSize: 13, color: C.sub, marginTop: 4 }}>
-                {loading && jobs.length === 0
-                  ? "Finding matching jobs…"
-                  : `${jobs.length} jobs · newest first · page ${safePage} of ${totalPages}`}
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 10, minWidth: 0, flex: 1 }}>
+              <MobileNavToggle style={{ marginTop: 2 }} />
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: 22, fontWeight: 700, color: C.text }}>Job listings</div>
+                <div style={{ fontSize: 13, color: C.sub, marginTop: 4 }}>
+                  {loading && jobs.length === 0
+                    ? "Finding matching jobs…"
+                    : `${jobs.length} jobs · newest first · page ${safePage} of ${totalPages}`}
+                </div>
               </div>
             </div>
             <LogoutBtn onLogout={onLogout} />
@@ -1378,30 +1480,26 @@ const JobsScreen = ({
         />
       </div>
 
-      {!isPro && (
-        <p style={{ margin: "10px 14px 0", fontSize: 12, color: C.sub, lineHeight: 1.5, maxWidth: 960, padding: "0 40px" }} className="desktop-only">
-          Browse any job. Free plan: <strong style={{ color: C.text }}>one document generation</strong> per month (any job).
-        </p>
-      )}
-      {!isPro && (
-        <p className="mobile-only mobile-inline-alert" style={{ fontSize: 12, color: C.sub, lineHeight: 1.5 }}>
-          Browse any job. Free plan: <strong style={{ color: C.text }}>one document generation</strong> per month (any job).
-        </p>
-      )}
+      <div className="jobs-screen-content">
+        {(datePostedNotice || (jsearchRaw != null && jobs.length > 0 && jobs.length < 8) || !isPro) && (
+          <div className="jobs-screen-notices">
+            {!isPro && (
+              <p className="jobs-screen-notice jobs-screen-notice--info">
+                Browse any job. Free plan: <strong>one document generation</strong> per month (any job).
+              </p>
+            )}
+            {datePostedNotice && (
+              <p className="jobs-screen-notice jobs-screen-notice--amber">{datePostedNotice}</p>
+            )}
+            {jsearchRaw != null && jobs.length > 0 && jobs.length < 8 && (
+              <p className="jobs-screen-notice jobs-screen-notice--muted">
+                Only {jsearchRaw} job{jsearchRaw === 1 ? "" : "s"} found for this search right now. Try a wider date range or different filters.
+              </p>
+            )}
+          </div>
+        )}
 
-      {datePostedNotice && (
-        <div className="mobile-inline-alert" style={{ padding: "12px 14px", borderRadius: 12, background: `${C.amber}18`, border: `1px solid ${C.amber}44`, fontSize: 12, color: C.amber, lineHeight: 1.55, maxWidth: 960 }}>
-          {datePostedNotice}
-        </div>
-      )}
-
-      {jsearchRaw != null && jobs.length > 0 && jobs.length < 8 && (
-        <div className="mobile-inline-alert" style={{ padding: "12px 14px", borderRadius: 12, background: `${C.sub}12`, border: `1px solid ${C.border}`, fontSize: 12, color: C.sub, lineHeight: 1.55, maxWidth: 960 }}>
-          Only {jsearchRaw} job{jsearchRaw === 1 ? "" : "s"} found for this search right now. Try a wider date range or different filters.
-        </div>
-      )}
-
-      <div className="jobs-list-body">
+        <div className="jobs-list-body">
         {loading && jobs.length === 0 ? (
           <JobsListSkeleton />
         ) : jobs.length === 0 ? (
@@ -1550,6 +1648,7 @@ const JobsScreen = ({
             )}
           </>
         )}
+        </div>
       </div>
 
       <div className="mobile-dock">
@@ -1902,10 +2001,13 @@ const JobDetailScreen = ({
     <PageMain variant="full">
       <div className="detail-header-mobile">
         <MobileOnly>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-            <button type="button" onClick={onBack} style={{ fontSize: 13, color: C.accent, fontWeight: 600, padding: "4px 0" }}>
-              Back to jobs
-            </button>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flex: 1 }}>
+              <MobileNavToggle />
+              <button type="button" onClick={onBack} style={{ fontSize: 13, color: C.accent, fontWeight: 600, padding: "4px 0" }}>
+                Back to jobs
+              </button>
+            </div>
             <LogoutBtn onLogout={onLogout} small />
           </div>
         </MobileOnly>
@@ -2123,7 +2225,8 @@ const UpgradeModal = ({ reason, onUpgrade, onClose, processing }) => {
 
 const Header = ({ title, onLogout }) => (
   <div className="mobile-screen-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, gap: 12 }}>
-    <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0, flex: 1 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flex: 1 }}>
+      <MobileNavToggle />
       <AppLogo size={36} style={{ boxShadow: C.shadowSm, flexShrink: 0 }} />
       <h2 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: 0, lineHeight: 1.25, minWidth: 0 }}>{title}</h2>
     </div>
@@ -2304,6 +2407,7 @@ export default function App() {
   return (
     <div className="app-root">
       <GlobalStyle />
+      <CookieConsentBanner />
       {!user ? (
         <LandingScreen initialError={loginError} />
       ) : (

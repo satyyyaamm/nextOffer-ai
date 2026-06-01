@@ -106,3 +106,4 @@ export const generateDocument = (data) => callFunction("generateDocument", data)
 export const getJobKit = (data) => callFunction("getJobKit", data);
 export const listJobKits = () => callFunction("listJobKits");
 export const createCheckoutSession = (data) => callFunction("createCheckoutSession", data);
+export const deleteUserData = (data) => callFunction("deleteUserData", data, 120000);
