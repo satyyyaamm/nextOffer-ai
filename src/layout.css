@@ -1071,6 +1071,10 @@ body,
   margin-top: 4px;
 }
 
+.filters-loading-note {
+  margin: 0;
+}
+
 @media (min-width: 768px) {
   .filters-layout {
     display: grid;
@@ -1104,10 +1108,16 @@ body,
   .filters-actions {
     flex-direction: row;
     gap: 12px;
+    flex-wrap: wrap;
   }
 
   .filters-actions button {
     flex: 1;
+  }
+
+  .filters-loading-note {
+    flex-basis: 100%;
+    margin-top: -2px;
   }
 }
 

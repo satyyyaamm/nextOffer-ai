@@ -366,6 +366,7 @@ const DashboardScreen = ({ userProfile, onProfileUpdate, showProBanner, onDismis
   const [loadingKit, setLoadingKit] = useState(false);
   const [needsResumeReupload, setNeedsResumeReupload] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [upgradeReason, setUpgradeReason] = useState(UPGRADE_MESSAGES.generic);
   const [processingPayment, setProcessingPayment] = useState(false);
@@ -374,6 +375,16 @@ const DashboardScreen = ({ userProfile, onProfileUpdate, showProBanner, onDismis
   const [dataPrivacyOpen, setDataPrivacyOpen] = useState(false);
   const [deletingData, setDeletingData] = useState(false);
   const [deleteDataError, setDeleteDataError] = useState("");
+  const [kitScreenCache, setKitScreenCache] = useState({
+    kitList: [],
+    selectedKey: null,
+    loadedKitKey: null,
+    generated: {},
+    jobSnapshot: null,
+    applyUrl: "",
+    tab: "resume",
+    mobileShowViewer: false,
+  });
 
   const isPro = userProfile?.tier === "pro";
   const searchesUsed = userProfile?.searches?.count || 0;
@@ -605,7 +616,7 @@ const DashboardScreen = ({ userProfile, onProfileUpdate, showProBanner, onDismis
       datePostedNotice: null,
       jsearchStats: null,
     }));
-    setLoading(true);
+    setSearchLoading(true);
     try {
       await runJobSearch(profile, filtersData);
     } catch (err) {
@@ -617,7 +628,7 @@ const DashboardScreen = ({ userProfile, onProfileUpdate, showProBanner, onDismis
         alert(callableErrorMessage(err));
       }
     }
-    setLoading(false);
+    setSearchLoading(false);
   };
 
   const openJobDetail = useCallback(async (job) => {
@@ -762,7 +773,7 @@ const DashboardScreen = ({ userProfile, onProfileUpdate, showProBanner, onDismis
           profile={profile}
           isPro={isPro}
           searchLimitReached={!isPro && searchesUsed >= 1}
-          loading={loading}
+          loading={searchLoading}
           onSearch={searchJobs}
           onPromptUpgrade={openUpgrade}
           onUpdateResume={() => setScreen("resume")}
@@ -775,7 +786,7 @@ const DashboardScreen = ({ userProfile, onProfileUpdate, showProBanner, onDismis
         <JobsScreen
           key={jobsListKey}
           jobs={jobs}
-          loading={loading}
+          loading={searchLoading}
           currencySymbol={currencySymbol}
           hasMoreApi={jobsMeta.hasMoreApi}
           loadingMoreApi={loadingMoreJobs}
@@ -802,6 +813,8 @@ const DashboardScreen = ({ userProfile, onProfileUpdate, showProBanner, onDismis
           onPromptUpgrade={openUpgrade}
           onProfileUpdate={onProfileUpdate}
           onLogout={handleLogout}
+          cache={kitScreenCache}
+          onCacheChange={setKitScreenCache}
         />
         </div>
       )}
@@ -1155,7 +1168,7 @@ const FiltersScreen = ({ profile, isPro, searchLimitReached, loading, onSearch, 
             >
               {loading ? (
                 <>
-                  <Spinner size={18} color="#fff" /> Searching…
+                  <Spinner size={18} color="#fff" /> Searching job boards and ranking matches…
                 </>
               ) : searchLimitReached ? (
                 "Upgrade to search again"
@@ -1165,6 +1178,11 @@ const FiltersScreen = ({ profile, isPro, searchLimitReached, loading, onSearch, 
                 </>
               )}
             </button>
+            {loading && (
+              <p className="filters-loading-note" style={{ fontSize: 12, color: C.sub, lineHeight: 1.5 }}>
+                Checking listings across LinkedIn, Indeed and more, then scoring fit to your resume. This can take up to ~20-40 seconds.
+              </p>
+            )}
             <button type="button" onClick={onUpdateResume} style={outlineBtnStyle}>
               Update resume / change profile
             </button>
@@ -1188,19 +1206,22 @@ const ApplicationKitScreen = ({
   onPromptUpgrade,
   onProfileUpdate,
   onLogout,
+  cache,
+  onCacheChange,
 }) => {
-  const [kitList, setKitList] = useState([]);
+  const [kitList, setKitList] = useState(() => cache?.kitList || []);
   const [loadingList, setLoadingList] = useState(true);
   const [listError, setListError] = useState("");
-  const [selectedKey, setSelectedKey] = useState(null);
-  const [generated, setGenerated] = useState({});
-  const [jobSnapshot, setJobSnapshot] = useState(null);
-  const [applyUrl, setApplyUrl] = useState("");
+  const [selectedKey, setSelectedKey] = useState(() => cache?.selectedKey || null);
+  const [generated, setGenerated] = useState(() => cache?.generated || {});
+  const [jobSnapshot, setJobSnapshot] = useState(() => cache?.jobSnapshot || null);
+  const [applyUrl, setApplyUrl] = useState(() => cache?.applyUrl || "");
+  const [loadedKitKey, setLoadedKitKey] = useState(() => cache?.loadedKitKey || null);
   const [loadingKit, setLoadingKit] = useState(false);
   const [loadingGen, setLoadingGen] = useState(false);
   const [genError, setGenError] = useState("");
-  const [tab, setTab] = useState("resume");
-  const [mobileShowViewer, setMobileShowViewer] = useState(false);
+  const [tab, setTab] = useState(() => cache?.tab || "resume");
+  const [mobileShowViewer, setMobileShowViewer] = useState(() => cache?.mobileShowViewer || false);
 
   const selectedKit = kitList.find((k) => (k.kitKey || k.jobKey) === selectedKey) || null;
 
@@ -1224,12 +1245,34 @@ const ApplicationKitScreen = ({
   }, [onKitCountChange]);
 
   useEffect(() => {
+    const hasCachedList = Array.isArray(cache?.kitList) && cache.kitList.length > 0;
+    if (hasCachedList) {
+      setLoadingList(false);
+      onKitCountChange?.(cache.kitList.length);
+      return;
+    }
     loadList();
-  }, [loadList]);
+  }, [cache?.kitList, loadList, onKitCountChange]);
+
+  useEffect(() => {
+    onCacheChange?.({
+      kitList,
+      selectedKey,
+      loadedKitKey,
+      generated,
+      jobSnapshot,
+      applyUrl,
+      tab,
+      mobileShowViewer,
+    });
+  }, [kitList, selectedKey, loadedKitKey, generated, jobSnapshot, applyUrl, tab, mobileShowViewer, onCacheChange]);
 
   useEffect(() => {
     const kit = kitList.find((k) => (k.kitKey || k.jobKey) === selectedKey);
     if (!kit) return undefined;
+    if (selectedKey && selectedKey === loadedKitKey) {
+      return undefined;
+    }
     let cancelled = false;
     setLoadingKit(true);
     setGenerated({});
@@ -1245,6 +1288,7 @@ const ApplicationKitScreen = ({
         if (k.cover_letter) saved.cover_letter = k.cover_letter;
         if (k.cold_email) saved.cold_email = k.cold_email;
         setGenerated(saved);
+        setLoadedKitKey(kit.kitKey || kit.jobKey);
         setJobSnapshot(result.data?.jobSnapshot || snapshotToJob({
           title: result.data?.jobTitle,
           company: result.data?.company,
@@ -1264,7 +1308,7 @@ const ApplicationKitScreen = ({
     return () => {
       cancelled = true;
     };
-  }, [selectedKey, kitList]);
+  }, [selectedKey, kitList, loadedKitKey]);
 
   const regenerateDoc = async (docType) => {
     if (!isPro && kitUsed) {
@@ -1469,7 +1513,7 @@ const JobsScreen = ({
                 <div style={{ fontSize: 22, fontWeight: 700, color: C.text }}>Job listings</div>
                 <div style={{ fontSize: 13, color: C.sub, marginTop: 4 }}>
                   {loading && jobs.length === 0
-                    ? "Finding matching jobs…"
+                    ? "Searching job boards + scoring matches for your profile…"
                     : `${jobs.length} jobs · newest first · page ${safePage} of ${totalPages}`}
                 </div>
               </div>
@@ -1482,7 +1526,7 @@ const JobsScreen = ({
           title="Job listings"
           subtitle={
             loading && jobs.length === 0
-              ? "Finding matching jobs…"
+              ? "Searching job boards + ranking results for your resume…"
               : `${jobs.length} jobs · newest first · page ${safePage} of ${totalPages}`
           }
         />
