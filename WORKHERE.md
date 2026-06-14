@@ -8,7 +8,7 @@ This is the **active** project root for NextOffer.ai.
 |------|---------|
 | `.firebaserc` | Firebase project `nextoffer-ai` |
 | `.env.local` | Web app config (from Firebase Console) |
-| `functions/.env.nextoffer-ai` | `FRONTEND_URL`, `GA4_MEASUREMENT_ID` for Cloud Functions |
+| `functions/.env.nextoffer-ai` | `GA4_MEASUREMENT_ID` for server-side analytics (optional) |
 
 Firebase CLI login is **global** — same account works here after `firebase login`.
 
@@ -32,4 +32,4 @@ Do not keep editing `bunny/nextOffer/files` — that copy is outdated.
 ## Secrets
 
 - Never commit `.env.local` or `functions/.env.nextoffer-ai`
-- API keys for Anthropic, RapidAPI, Lemon Squeezy, GA4 API secret → Firebase Secrets only
+- API keys for Anthropic, RapidAPI, Razorpay, GA4 API secret → Firebase Secrets only

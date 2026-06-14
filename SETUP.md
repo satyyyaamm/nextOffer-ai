@@ -36,7 +36,7 @@ You only need to **create a Firebase project**, **paste keys**, and **deploy**. 
 |-----|-------|
 | **Anthropic** | [console.anthropic.com](https://console.anthropic.com/settings/keys) |
 | **RapidAPI (JSearch)** | [Subscribe free](https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch) → copy `X-RapidAPI-Key` |
-| **Lemon Squeezy** | Global **$9.99 USD/mo** — see **[PAYMENTS.md](./PAYMENTS.md)** (works from India) |
+| **Razorpay** | **$5.99/week** or **$9.99/month** (display) — INR plans in Razorpay — see **[PAYMENTS.md](./PAYMENTS.md)** |
 
 ---
 
@@ -81,17 +81,11 @@ Or manually:
 ```bash
 firebase functions:secrets:set ANTHROPIC_API_KEY
 firebase functions:secrets:set RAPIDAPI_KEY
-firebase functions:secrets:set LEMONSQUEEZY_API_KEY
-firebase functions:secrets:set LEMONSQUEEZY_WEBHOOK_SECRET
-firebase functions:secrets:set LEMONSQUEEZY_STORE_ID
-firebase functions:secrets:set LEMONSQUEEZY_VARIANT_ID
-```
-
-Set frontend URL (for checkout redirect):
-
-```bash
-echo "FRONTEND_URL=http://localhost:3000" > functions/.env.nextoffer-ai
-# After deploy: FRONTEND_URL=https://nextoffer-ai.web.app
+firebase functions:secrets:set RAZORPAY_KEY_ID
+firebase functions:secrets:set RAZORPAY_KEY_SECRET
+firebase functions:secrets:set RAZORPAY_PLAN_ID_WEEKLY
+firebase functions:secrets:set RAZORPAY_PLAN_ID_MONTHLY
+firebase functions:secrets:set RAZORPAY_WEBHOOK_SECRET
 ```
 
 Install function dependencies and deploy:
@@ -103,13 +97,13 @@ firebase deploy --only functions,firestore:rules
 
 ---
 
-## Step 5: Lemon Squeezy payments (10 min)
+## Step 5: Razorpay payments (10 min)
 
 Follow **[PAYMENTS.md](./PAYMENTS.md)** to:
 
-1. Create a **$9.99 USD/month** subscription product
-2. Add webhook → `https://us-central1-nextoffer-ai.cloudfunctions.net/lemonSqueezyWebhook`
-3. Run `npm run setup:secrets` with your Lemon Squeezy keys
+1. Create Razorpay subscription plans (~₹499/week, ~₹999/month — app shows $5.99 / $9.99)
+2. Add webhook → `https://us-central1-nextoffer-ai.cloudfunctions.net/razorpayWebhook`
+3. Run `npm run setup:secrets` with your Razorpay keys
 
 ```bash
 firebase deploy --only functions
@@ -147,17 +141,14 @@ Test flow:
 2. Paste resume → Parse
 3. Set filters → Search (real JSearch jobs)
 4. Generate documents → Copy
-5. Upgrade with test card `4242 4242 4242 4242`
+5. Upgrade with Razorpay test card `4111 1111 1111 1111`
 
 ---
 
 ## Step 8: Deploy to Production
 
 ```bash
-# Update checkout redirect URL
-echo "FRONTEND_URL=https://nextoffer-ai.web.app" > functions/.env.nextoffer-ai
 firebase deploy --only functions
-
 npm run deploy
 ```
 
@@ -173,7 +164,7 @@ Your app is live at `https://YOUR_PROJECT.web.app`
 | **Firestore** | Rules deny all client reads/writes |
 | **Auth** | Google OAuth via Firebase Auth |
 | **AI & jobs** | All processing in Cloud Functions |
-| **Payments** | Lemon Squeezy (global USD) + signed webhooks |
+| **Payments** | Razorpay (INR subscriptions) + signed webhooks |
 | **Rate limits** | Per-user daily caps on AI calls |
 | **Headers** | CSP, X-Frame-Options, nosniff on hosting |
 | **Analytics** | GA4 via Firebase Analytics; see ANALYTICS.md |
@@ -189,8 +180,8 @@ Your app is live at `https://YOUR_PROJECT.web.app`
 |-------|-----|
 | Google login fails | Add domain to Firebase Auth authorized domains |
 | "Job search unavailable" | Check `RAPIDAPI_KEY` secret; verify JSearch subscription |
-| Checkout fails | Verify Lemon Squeezy secrets + Store/Variant IDs — see PAYMENTS.md |
-| Pro not unlocking | Check webhook URL + `LEMONSQUEEZY_WEBHOOK_SECRET`; return via `?checkout=success` |
+| Checkout fails | Verify Razorpay keys + Plan IDs — see PAYMENTS.md |
+| Pro not unlocking | Check webhook URL + `RAZORPAY_WEBHOOK_SECRET`; payment verify runs on success |
 | Functions timeout | JSearch + AI ranking can take 30–60s — already set to 120s |
 
 ---
@@ -205,7 +196,7 @@ files/
 │   ├── firebase.js            # Firebase client init
 │   └── theme.js               # Design tokens
 ├── functions/
-│   └── index.js               # Secure backend (AI, JSearch, Lemon Squeezy)
+│   └── index.js               # Secure backend (AI, JSearch, Razorpay)
 ├── firestore.rules            # Deny all client DB access
 ├── firebase.json              # Hosting + functions config
 ├── .env.local.example         # Frontend env template

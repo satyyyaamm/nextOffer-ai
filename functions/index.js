@@ -3,11 +3,11 @@
  *
  * Secrets (firebase functions:secrets:set …):
  *   ANTHROPIC_API_KEY, RAPIDAPI_KEY
- *   LEMONSQUEEZY_API_KEY, LEMONSQUEEZY_WEBHOOK_SECRET
- *   LEMONSQUEEZY_STORE_ID, LEMONSQUEEZY_VARIANT_ID_WEEKLY, LEMONSQUEEZY_VARIANT_ID_MONTHLY
+ *   RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET
+ *   RAZORPAY_PLAN_ID_WEEKLY, RAZORPAY_PLAN_ID_MONTHLY
  *   GA4_API_SECRET (optional — server purchase_success events)
  *
- * FRONTEND_URL, GA4_MEASUREMENT_ID in functions/.env.nextoffer-ai
+ * GA4_MEASUREMENT_ID in functions/.env.nextoffer-ai (optional)
  */
 
 const crypto = require("crypto");
@@ -22,24 +22,28 @@ const db = admin.firestore();
 // ─── Secrets & config ────────────────────────────────────────────────────────
 const anthropicApiKey = defineSecret("ANTHROPIC_API_KEY");
 const rapidApiKey = defineSecret("RAPIDAPI_KEY");
-const lsApiKey = defineSecret("LEMONSQUEEZY_API_KEY");
-const lsWebhookSecret = defineSecret("LEMONSQUEEZY_WEBHOOK_SECRET");
-const lsStoreId = defineSecret("LEMONSQUEEZY_STORE_ID");
-const lsVariantIdWeekly = defineSecret("LEMONSQUEEZY_VARIANT_ID_WEEKLY");
-const lsVariantIdMonthly = defineSecret("LEMONSQUEEZY_VARIANT_ID_MONTHLY");
-const frontendUrl = defineString("FRONTEND_URL", { default: "http://localhost:3000" });
+const rzKeyId = defineSecret("RAZORPAY_KEY_ID");
+const rzKeySecret = defineSecret("RAZORPAY_KEY_SECRET");
+const rzWebhookSecret = defineSecret("RAZORPAY_WEBHOOK_SECRET");
+const rzPlanIdWeekly = defineSecret("RAZORPAY_PLAN_ID_WEEKLY");
+const rzPlanIdMonthly = defineSecret("RAZORPAY_PLAN_ID_MONTHLY");
 const ga4MeasurementId = defineString("GA4_MEASUREMENT_ID", { default: "" });
 const ga4ApiSecret = defineSecret("GA4_API_SECRET");
 
-const LS_API = "https://api.lemonsqueezy.com/v1";
-const LS_ACTIVE_STATUSES = new Set(["active", "on_trial"]);
-const LS_CANCEL_STATUSES = new Set(["cancelled", "expired", "unpaid", "past_due"]);
+const RZ_API = "https://api.razorpay.com/v1";
+/** Billing cycles — high count so subscription runs until customer cancels. */
+const RZ_SUBSCRIPTION_TOTAL_COUNT = 999;
+const PRO_PRICE_USD = { weekly: 5.99, monthly: 9.99 };
 
 const BASE_OPTS = { cors: true, invoker: "public" };
 const AI_OPTS = { ...BASE_OPTS, secrets: [anthropicApiKey, rapidApiKey] };
 const CHECKOUT_OPTS = {
   ...BASE_OPTS,
-  secrets: [lsApiKey, lsStoreId, lsVariantIdWeekly, lsVariantIdMonthly],
+  secrets: [rzKeyId, rzKeySecret, rzPlanIdWeekly, rzPlanIdMonthly],
+};
+const RZ_WEBHOOK_OPTS = {
+  secrets: [rzWebhookSecret, ga4ApiSecret],
+  cors: false,
 };
 
 // Haiku 4.5 for all tiers (free + Pro) — lower cost than Sonnet
@@ -1239,20 +1243,75 @@ function parseJsonFromAI(text) {
   return JSON.parse(clean);
 }
 
-function verifyLemonSqueezySignature(rawBody, signatureHeader, secret) {
-  const hmac = crypto.createHmac("sha256", secret);
-  const digest = Buffer.from(hmac.update(rawBody).digest("hex"), "utf8");
-  const signature = Buffer.from(signatureHeader || "", "utf8");
-  if (digest.length !== signature.length || !crypto.timingSafeEqual(digest, signature)) {
+function verifyRazorpayWebhookSignature(rawBody, signatureHeader, secret) {
+  const expected = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
+  const received = String(signatureHeader || "");
+  if (!received || expected.length !== received.length) {
+    throw new Error("Invalid webhook signature");
+  }
+  if (!crypto.timingSafeEqual(Buffer.from(expected, "utf8"), Buffer.from(received, "utf8"))) {
     throw new Error("Invalid webhook signature");
   }
 }
 
-function resolveCheckoutVariantId(plan, weeklyId, monthlyId) {
+function verifyRazorpayPaymentSignature({ subscriptionId, paymentId, signature, secret }) {
+  const expected = crypto
+    .createHmac("sha256", secret)
+    .update(`${subscriptionId}|${paymentId}`)
+    .digest("hex");
+  if (expected !== signature) {
+    throw new HttpsError("invalid-argument", "Invalid payment signature.");
+  }
+}
+
+function resolveCheckoutPlanId(plan, weeklyId, monthlyId) {
   const key = String(plan || "monthly").toLowerCase();
-  if (key === "weekly" || key === "week") return weeklyId;
-  if (key === "monthly" || key === "month") return monthlyId;
+  if (key === "weekly" || key === "week") return { planId: weeklyId, planKey: "weekly" };
+  if (key === "monthly" || key === "month") return { planId: monthlyId, planKey: "monthly" };
   throw new HttpsError("invalid-argument", 'Plan must be "weekly" or "monthly".');
+}
+
+function razorpayAuthHeader(keyId, keySecret) {
+  return `Basic ${Buffer.from(`${keyId}:${keySecret}`).toString("base64")}`;
+}
+
+async function razorpayRequest(keyId, keySecret, path, options = {}) {
+  const response = await fetch(`${RZ_API}${path}`, {
+    ...options,
+    headers: {
+      Authorization: razorpayAuthHeader(keyId, keySecret),
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
+  });
+  const json = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    console.error("Razorpay API error:", path, json);
+    throw new Error(json.error?.description || json.error?.code || "Razorpay request failed");
+  }
+  return json;
+}
+
+async function createRazorpaySubscription({ userId, email, keyId, keySecret, planId, planKey }) {
+  const subscription = await razorpayRequest(keyId, keySecret, "/subscriptions", {
+    method: "POST",
+    body: JSON.stringify({
+      plan_id: planId,
+      total_count: RZ_SUBSCRIPTION_TOTAL_COUNT,
+      quantity: 1,
+      customer_notify: 1,
+      notes: {
+        user_id: userId,
+        plan: planKey,
+        email: email || "",
+      },
+    }),
+  });
+
+  if (!subscription?.id) {
+    throw new Error("No subscription ID returned from Razorpay");
+  }
+  return subscription;
 }
 
 async function sendGa4Event({ userId, eventName, params = {} }) {
@@ -1289,49 +1348,11 @@ async function sendGa4Event({ userId, eventName, params = {} }) {
   }
 }
 
-async function createLemonSqueezyCheckout({ userId, email, apiKey, storeId, variantId, baseUrl, plan }) {
-  const response = await fetch(`${LS_API}/checkouts`, {
-    method: "POST",
-    headers: {
-      Accept: "application/vnd.api+json",
-      "Content-Type": "application/vnd.api+json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      data: {
-        type: "checkouts",
-        attributes: {
-          product_options: {
-            redirect_url: `${baseUrl}?checkout=success`,
-          },
-          checkout_data: {
-            email: email || undefined,
-            custom: { user_id: userId, plan: String(plan || "monthly").toLowerCase() },
-          },
-        },
-        relationships: {
-          store: { data: { type: "stores", id: String(storeId) } },
-          variant: { data: { type: "variants", id: String(variantId) } },
-        },
-      },
-    }),
-  });
-
-  const json = await response.json();
-  if (!response.ok) {
-    console.error("Lemon Squeezy checkout error:", json);
-    throw new Error(json.errors?.[0]?.detail || "Checkout creation failed");
-  }
-
-  const url = json.data?.attributes?.url;
-  if (!url) throw new Error("No checkout URL returned");
-  return url;
-}
-
-async function setUserPro(userId, subscriptionId) {
+async function setUserPro(userId, subscriptionId, planKey = "monthly") {
   await db.collection("users").doc(userId).update({
     tier: "pro",
-    lemonSqueezySubscriptionId: subscriptionId || null,
+    razorpaySubscriptionId: subscriptionId || null,
+    proPlan: planKey || "monthly",
     upgradedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
 }
@@ -1339,7 +1360,8 @@ async function setUserPro(userId, subscriptionId) {
 async function setUserFree(userId) {
   await db.collection("users").doc(userId).update({
     tier: "free",
-    lemonSqueezySubscriptionId: null,
+    razorpaySubscriptionId: null,
+    proPlan: null,
     proExpiresAt: null,
   });
 }
@@ -1737,31 +1759,42 @@ exports.listJobKits = onCall(BASE_OPTS, async (request) => {
   return { success: true, kits };
 });
 
-// ─── Callable: Lemon Squeezy Checkout (global USD subscriptions) ─────────────
+// ─── Callable: Razorpay Checkout (USD display; INR plans in Razorpay dashboard) ─
 
 exports.createCheckoutSession = onCall(CHECKOUT_OPTS, async (request) => {
   const user = await ensureUserExists(request);
   const userId = user.id;
   const { plan } = request.data || {};
-  const baseUrl = frontendUrl.value().replace(/\/$/, "");
 
   try {
-    const variantId = resolveCheckoutVariantId(
+    const keyId = rzKeyId.value();
+    const keySecret = rzKeySecret.value();
+    const { planId, planKey } = resolveCheckoutPlanId(
       plan,
-      lsVariantIdWeekly.value(),
-      lsVariantIdMonthly.value()
+      rzPlanIdWeekly.value(),
+      rzPlanIdMonthly.value()
     );
-    const planKey = String(plan || "monthly").toLowerCase();
-    const url = await createLemonSqueezyCheckout({
+
+    const subscription = await createRazorpaySubscription({
       userId,
       email: user.email,
-      apiKey: lsApiKey.value(),
-      storeId: lsStoreId.value(),
-      variantId,
-      baseUrl,
-      plan: planKey,
+      keyId,
+      keySecret,
+      planId,
+      planKey,
     });
-    return { url, plan: String(plan || "monthly").toLowerCase() };
+
+    const isWeekly = planKey === "weekly";
+    return {
+      keyId,
+      subscriptionId: subscription.id,
+      plan: planKey,
+      email: user.email || "",
+      customerName: user.name || "",
+      name: "NextOffer.ai",
+      description: isWeekly ? "Weekly Sprint — Pro" : "Monthly Pro",
+      amountLabel: isWeekly ? "$5.99/week" : "$9.99/month",
+    };
   } catch (error) {
     if (error instanceof HttpsError) throw error;
     console.error("Checkout error:", error.message);
@@ -1769,84 +1802,134 @@ exports.createCheckoutSession = onCall(CHECKOUT_OPTS, async (request) => {
   }
 });
 
-// ─── HTTP: Lemon Squeezy Webhook ─────────────────────────────────────────────
+exports.verifyRazorpaySubscription = onCall(
+  { ...BASE_OPTS, secrets: [rzKeySecret] },
+  async (request) => {
+    const userId = requireAuth(request);
+    const {
+      razorpay_payment_id: paymentId,
+      razorpay_subscription_id: subscriptionId,
+      razorpay_signature: signature,
+      plan,
+    } = request.data || {};
 
-exports.lemonSqueezyWebhook = onRequest(
-  { secrets: [lsWebhookSecret, ga4ApiSecret], cors: false },
-  async (req, res) => {
-    if (req.method !== "POST") {
-      res.status(405).send("Method Not Allowed");
+    if (!paymentId || !subscriptionId || !signature) {
+      throw new HttpsError("invalid-argument", "Missing payment verification fields.");
+    }
+
+    verifyRazorpayPaymentSignature({
+      subscriptionId,
+      paymentId,
+      signature,
+      secret: rzKeySecret.value(),
+    });
+
+    const planKey = String(plan || "monthly").toLowerCase();
+    await setUserPro(userId, subscriptionId, planKey);
+
+    const isWeekly = planKey === "weekly" || planKey === "week";
+    await sendGa4Event({
+      userId,
+      eventName: "purchase_success",
+      params: {
+        plan: isWeekly ? "weekly" : "monthly",
+        value: isWeekly ? PRO_PRICE_USD.weekly : PRO_PRICE_USD.monthly,
+        currency: "USD",
+      },
+    });
+
+    return { success: true, tier: "pro" };
+  }
+);
+
+// ─── HTTP: Razorpay Webhook ──────────────────────────────────────────────────
+
+exports.razorpayWebhook = onRequest(RZ_WEBHOOK_OPTS, async (req, res) => {
+  if (req.method !== "POST") {
+    res.status(405).send("Method Not Allowed");
+    return;
+  }
+
+  const rawBody = req.rawBody;
+  if (!rawBody) {
+    res.status(400).send("Missing raw body");
+    return;
+  }
+
+  try {
+    verifyRazorpayWebhookSignature(
+      rawBody,
+      req.headers["x-razorpay-signature"],
+      rzWebhookSecret.value()
+    );
+  } catch (err) {
+    console.error("Razorpay webhook signature failed:", err.message);
+    res.status(401).send("Invalid signature");
+    return;
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(rawBody.toString("utf8"));
+  } catch {
+    res.status(400).send("Invalid JSON");
+    return;
+  }
+
+  const eventName = payload.event;
+  const subEntity = payload.payload?.subscription?.entity || null;
+  const paymentEntity = payload.payload?.payment?.entity || null;
+  const entity = subEntity || paymentEntity || {};
+  const notes = subEntity?.notes || paymentEntity?.notes || entity.notes || {};
+  const userId = notes.user_id;
+  const planKey = String(notes.plan || "monthly").toLowerCase();
+  const subscriptionId = subEntity?.id || paymentEntity?.subscription_id || entity.id;
+
+  try {
+    if (!userId) {
+      res.json({ received: true, skipped: "no user_id in notes" });
       return;
     }
 
-    const rawBody = req.rawBody;
-    if (!rawBody) {
-      res.status(400).send("Missing raw body");
-      return;
-    }
+    const activateEvents = new Set([
+      "subscription.authenticated",
+      "subscription.activated",
+      "subscription.charged",
+      "subscription.resumed",
+    ]);
+    const deactivateEvents = new Set([
+      "subscription.cancelled",
+      "subscription.completed",
+      "subscription.halted",
+    ]);
 
-    try {
-      verifyLemonSqueezySignature(rawBody, req.headers["x-signature"], lsWebhookSecret.value());
-    } catch (err) {
-      console.error("LS webhook signature failed:", err.message);
-      res.status(401).send("Invalid signature");
-      return;
-    }
-
-    let payload;
-    try {
-      payload = JSON.parse(rawBody.toString("utf8"));
-    } catch {
-      res.status(400).send("Invalid JSON");
-      return;
-    }
-
-    const eventName = payload.meta?.event_name;
-    const userId = payload.meta?.custom_data?.user_id;
-    const checkoutPlan = payload.meta?.custom_data?.plan;
-    const subStatus = payload.data?.attributes?.status;
-
-    try {
-      if (!userId) {
-        res.json({ received: true, skipped: "no user_id in custom_data" });
-        return;
-      }
-
-      if (
-        eventName === "subscription_created" ||
-        eventName === "subscription_payment_success" ||
-        (eventName === "subscription_updated" && LS_ACTIVE_STATUSES.has(subStatus))
-      ) {
-        await setUserPro(userId, payload.data?.id);
-        const plan = String(checkoutPlan || "monthly").toLowerCase();
-        const isWeekly = plan === "weekly" || plan === "week";
+    if (activateEvents.has(eventName)) {
+      await setUserPro(userId, subscriptionId, planKey);
+      if (eventName === "subscription.charged" || eventName === "subscription.activated") {
+        const isWeekly = planKey === "weekly" || planKey === "week";
         await sendGa4Event({
           userId,
           eventName: "purchase_success",
           params: {
             plan: isWeekly ? "weekly" : "monthly",
-            value: isWeekly ? 5.99 : 9.99,
+            value: isWeekly ? PRO_PRICE_USD.weekly : PRO_PRICE_USD.monthly,
             currency: "USD",
           },
         });
       }
-
-      if (
-        eventName === "subscription_cancelled" ||
-        eventName === "subscription_expired" ||
-        (eventName === "subscription_updated" && LS_CANCEL_STATUSES.has(subStatus))
-      ) {
-        await setUserFree(userId);
-      }
-    } catch (err) {
-      console.error("LS webhook handler error:", err);
-      res.status(500).send("Webhook handler failed");
-      return;
     }
 
-    res.json({ received: true });
+    if (deactivateEvents.has(eventName)) {
+      await setUserFree(userId);
+    }
+  } catch (err) {
+    console.error("Razorpay webhook handler error:", err);
+    res.status(500).send("Webhook handler failed");
+    return;
   }
-);
+
+  res.json({ received: true });
+});
 
 // ─── Callable: Log client errors (web crash reporting) ───────────────────────
 

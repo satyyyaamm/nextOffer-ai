@@ -10,8 +10,10 @@ import {
   getJobKit as getJobKitFn,
   listJobKits as listJobKitsFn,
   createCheckoutSession as createCheckoutFn,
+  verifyRazorpaySubscription as verifyRazorpaySubscriptionFn,
   deleteUserData as deleteUserDataFn,
 } from "./callable";
+import { openRazorpaySubscriptionCheckout } from "./razorpay";
 import { loadOrCreateUserProfile } from "./userProfile";
 import {
   track,
@@ -25,7 +27,7 @@ import {
   upgradeReasonKey,
 } from "./analytics";
 import { setCrashScreen } from "./crashReporting";
-import { C, font, cardStyle, REGIONS, TOP_CITIES_BY_REGION } from "./theme";
+import { C, font, cardStyle, REGIONS, TOP_CITIES_BY_REGION, PRO_PRICING } from "./theme";
 import {
   IconSearch,
   IconUpload,
@@ -345,7 +347,7 @@ function isInsufficientSearchResponse(data) {
   return data?.insufficientResults === true;
 }
 
-const DashboardScreen = ({ userProfile, onProfileUpdate, showProBanner, onDismissProBanner, profileLoading, profileError }) => {
+const DashboardScreen = ({ userProfile, onProfileUpdate, showProBanner, onShowProBanner, onDismissProBanner, profileLoading, profileError }) => {
   const savedProfile = userProfile?.parsedProfile;
   const hasSavedProfile = Boolean(savedProfile?.title);
 
@@ -689,14 +691,36 @@ const DashboardScreen = ({ userProfile, onProfileUpdate, showProBanner, onDismis
     setProcessingPayment(true);
     try {
       const result = await createCheckoutFn({ plan });
-      const { url } = result.data;
-      if (url) {
-        window.location.href = url;
-      } else {
-        alert("Checkout could not be started. Please try again.");
-      }
+      const checkout = result.data;
+      await openRazorpaySubscriptionCheckout(checkout, {
+        onSuccess: async (response) => {
+          try {
+            await verifyRazorpaySubscriptionFn({
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_subscription_id: response.razorpay_subscription_id,
+              razorpay_signature: response.razorpay_signature,
+              plan: checkout.plan,
+            });
+            await onProfileUpdate();
+            onShowProBanner?.();
+            setShowUpgrade(false);
+            const isWeekly = checkout.plan === "weekly" || checkout.plan === "week";
+            track("checkout_return", { status: "success", plan: isWeekly ? "weekly" : "monthly" });
+            track("purchase_success", {
+              plan: isWeekly ? "weekly" : "monthly",
+              value: isWeekly ? PRO_PRICING.weekly.amount : PRO_PRICING.monthly.amount,
+              currency: PRO_PRICING.currency,
+            });
+          } catch (verifyErr) {
+            alert(callableErrorMessage(verifyErr) || "Payment received but verification failed. Pro will unlock shortly via webhook.");
+          }
+        },
+      });
     } catch (err) {
-      alert(err.message || "Payment setup failed");
+      const msg = err?.message || "";
+      if (!/cancelled/i.test(msg)) {
+        alert(msg || "Payment setup failed");
+      }
     }
     setProcessingPayment(false);
   };
@@ -2219,7 +2243,7 @@ const UpgradeModal = ({ reason, onUpgrade, onClose, processing }) => {
         >
           <div style={{ fontWeight: 700, fontSize: 15, color: C.text }}>Weekly Sprint</div>
           <div style={{ fontSize: 22, fontWeight: 700, marginTop: 6, color: C.text }}>
-            $5.99<span style={{ fontSize: 13, color: C.sub, fontWeight: 500 }}>/week</span>
+            {PRO_PRICING.symbol}{PRO_PRICING.weekly.amount}<span style={{ fontSize: 13, color: C.sub, fontWeight: 500 }}>{PRO_PRICING.weekly.period}</span>
           </div>
           <div style={{ fontSize: 12, color: C.sub, marginTop: 6 }}>One intense job-hunt week</div>
         </button>
@@ -2244,15 +2268,15 @@ const UpgradeModal = ({ reason, onUpgrade, onClose, processing }) => {
           </span>
           <div style={{ fontWeight: 700, fontSize: 15, color: C.text }}>Monthly Pro</div>
           <div style={{ fontSize: 22, fontWeight: 700, marginTop: 6, color: C.text }}>
-            $9.99<span style={{ fontSize: 13, color: C.sub, fontWeight: 500 }}>/month</span>
+            {PRO_PRICING.symbol}{PRO_PRICING.monthly.amount}<span style={{ fontSize: 13, color: C.sub, fontWeight: 500 }}>{PRO_PRICING.monthly.period}</span>
           </div>
           <div style={{ fontSize: 12, color: C.sub, marginTop: 6 }}>Cheaper than 2 weeks on Weekly</div>
         </button>
 
         <div style={{ background: C.bg, borderRadius: 12, padding: 14, marginBottom: 16 }}>
-          <TrustBadge icon={IconCreditCard} text="Secure checkout powered by Lemon Squeezy" />
+          <TrustBadge icon={IconCreditCard} text="Secure global checkout via Razorpay" />
           <div style={{ marginTop: 8, fontSize: 12, color: C.muted, lineHeight: 1.6 }}>
-            USD · No hidden fees · Cancel anytime from your receipt email
+            USD pricing · Major international cards accepted · Cancel anytime
           </div>
         </div>
 
@@ -2260,9 +2284,9 @@ const UpgradeModal = ({ reason, onUpgrade, onClose, processing }) => {
           {processing ? (
             <Spinner size={16} color="#fff" />
           ) : selectedPlan === "weekly" ? (
-            "Continue — $5.99/week"
+            PRO_PRICING.weekly.cta
           ) : (
-            "Continue — $9.99/month"
+            PRO_PRICING.monthly.cta
           )}
         </button>
         <button
@@ -2364,17 +2388,6 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const checkout = params.get("checkout");
-    if (checkout === "success") {
-      setShowProBanner(true);
-      track("checkout_return", { status: "success" });
-      window.history.replaceState({}, "", window.location.pathname);
-    } else if (checkout) {
-      track("checkout_return", { status: "unknown" });
-      window.history.replaceState({}, "", window.location.pathname);
-    }
-
     let unsubAuth = () => {};
     let cancelled = false;
 
@@ -2473,6 +2486,7 @@ export default function App() {
           profileLoading={profileLoading}
           profileError={profileError}
           showProBanner={showProBanner}
+          onShowProBanner={() => setShowProBanner(true)}
           onDismissProBanner={() => setShowProBanner(false)}
         />
       )}

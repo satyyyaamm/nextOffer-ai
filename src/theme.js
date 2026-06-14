@@ -100,3 +100,11 @@ export const cardStyle = {
   border: `1px solid ${C.border}`,
   boxShadow: C.shadowSm,
 };
+
+/** Pro subscription display prices (USD). Checkout via Razorpay — works for users worldwide with supported cards. */
+export const PRO_PRICING = {
+  currency: "USD",
+  symbol: "$",
+  weekly: { amount: 5.99, period: "/week", cta: "Continue — $5.99/week" },
+  monthly: { amount: 9.99, period: "/month", cta: "Continue — $9.99/month" },
+};

@@ -5,7 +5,7 @@ Repo root: **`/Users/satyyyaamm/bunny/nextOffer-ai`** (not `nextOffer/files`).
 ## What is never committed
 
 - `.env.local` (Firebase keys)
-- `functions/.env.nextoffer-ai` (FRONTEND_URL, GA4_MEASUREMENT_ID)
+- `functions/.env.nextoffer-ai` (GA4_MEASUREMENT_ID)
 - `.firebaserc` (use `.firebaserc.example` in the repo)
 - `node_modules/`, `build/`, `.firebase/`, `*.log`
 

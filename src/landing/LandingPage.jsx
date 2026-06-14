@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { track } from "../analytics";
-import { C } from "../theme";
+import { C, PRO_PRICING } from "../theme";
 import { signInWithGoogle, authErrorMessage } from "../auth";
 import { GoogleLogo, IconLock, IconShield, IconCheck, IconUpload, IconSearch, IconBuilding } from "../icons";
 import { AppLogo } from "../brand";
@@ -45,7 +45,7 @@ const PRICING_PLANS = [
   {
     id: "free",
     name: "Free",
-    price: "$0",
+    price: `${PRO_PRICING.symbol}0`,
     period: "",
     subtitle: "Try the full workflow once per month",
     features: FREE_FEATURES,
@@ -55,8 +55,8 @@ const PRICING_PLANS = [
   {
     id: "weekly",
     name: "Weekly Sprint",
-    price: "$5.99",
-    period: "/week",
+    price: `${PRO_PRICING.symbol}${PRO_PRICING.weekly.amount}`,
+    period: PRO_PRICING.weekly.period,
     subtitle: "One intense job-hunt week",
     features: PRO_FEATURES,
     highlighted: true,
@@ -65,8 +65,8 @@ const PRICING_PLANS = [
   {
     id: "monthly",
     name: "Monthly Pro",
-    price: "$9.99",
-    period: "/month",
+    price: `${PRO_PRICING.symbol}${PRO_PRICING.monthly.amount}`,
+    period: PRO_PRICING.monthly.period,
     subtitle: "Cheaper than 2 weeks on Weekly",
     features: PRO_FEATURES,
     highlighted: false,

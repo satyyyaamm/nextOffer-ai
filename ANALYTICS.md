@@ -25,20 +25,22 @@ REACT_APP_FIREBASE_MEASUREMENT_ID=G-XXXXXXXXXX
 
 ### 3. Server-side purchase events (optional)
 
-Ties Lemon Squeezy webhooks to GA4 when the client never returns:
+Backup revenue tracking when the browser closes before client events fire. The backend sends `purchase_success` via GA4 Measurement Protocol on:
+
+- `verifyRazorpaySubscription` (immediate payment success)
+- `razorpayWebhook` (`subscription.activated`, `subscription.charged`, renewals)
 
 ```bash
 firebase functions:secrets:set GA4_API_SECRET
 ```
 
-In `functions/.env.YOUR_PROJECT_ID` add:
+In `functions/.env.nextoffer-ai`:
 
 ```bash
 GA4_MEASUREMENT_ID=G-XXXXXXXXXX
-FRONTEND_URL=https://nextoffer-ai.web.app
 ```
 
-Redeploy functions after setting secrets.
+Redeploy functions after setting secrets. Client-side Firebase Analytics also fires `purchase_success` when checkout completes in-app (primary path for the monetization funnel).
 
 ### 4. Mark conversions in GA4
 
@@ -77,10 +79,10 @@ Admin → **Events** → mark as conversions:
 | `kit_library_open` | `kit_count` | Retention / return visits |
 | `upgrade_modal_view` | `reason` (`search`/`upload`/`kit`/`generic`) | **Where users hit limits** |
 | `upgrade_click` | `plan` | Pricing choice |
-| `checkout_start` | `plan` | Checkout intent |
-| `checkout_return` | `status` | Return from Lemon Squeezy |
+| `checkout_start` | `plan` | Razorpay checkout modal opened |
+| `checkout_return` | `status`, `plan` | Razorpay payment succeeded in-app |
 | `free_limit_reached` | `action` | Free tier ceiling |
-| `purchase_success` | `plan`, `value`, `currency` | Revenue (webhook) |
+| `purchase_success` | `plan`, `value`, `currency` | Revenue — client on success; server on verify + webhook renewals |
 | `api_call_failure` | `function_name`, `error_code` | Backend/API health |
 | `exception` | `description`, `fatal`, `context` | Crashes & errors |
 

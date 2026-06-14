@@ -126,4 +126,5 @@ export const generateDocument = (data) => callFunction("generateDocument", data,
 export const getJobKit = (data) => callFunction("getJobKit", data, TIMEOUT_MS.getJobKit);
 export const listJobKits = () => callFunction("listJobKits", {}, TIMEOUT_MS.listJobKits);
 export const createCheckoutSession = (data) => callFunction("createCheckoutSession", data, TIMEOUT_MS.createCheckoutSession);
+export const verifyRazorpaySubscription = (data) => callFunction("verifyRazorpaySubscription", data, TIMEOUT_MS.createCheckoutSession);
 export const deleteUserData = (data) => callFunction("deleteUserData", data, TIMEOUT_MS.deleteUserData);

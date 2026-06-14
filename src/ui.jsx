@@ -223,14 +223,14 @@ export const TrustFooter = () => (
   <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 20 }}>
     <TrustBadge icon={IconLock} text="256-bit encryption · HTTPS everywhere" />
     <TrustBadge icon={IconShield} text="Your resume is processed on secure servers — never sold or shared" />
-    <TrustBadge icon={IconCreditCard} text="Payments via Lemon Squeezy — we never see your card" />
+    <TrustBadge icon={IconCreditCard} text="Secure global checkout via Razorpay — we never see your card details" />
     <TrustBadge icon={IconCheck} text="Google Sign-In — no passwords stored on our end" />
   </div>
 );
 
 export const SocialProofPills = ({ className = "" }) => (
   <div className={`social-proof-pills ${className}`.trim()} style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center", marginTop: 20 }}>
-    {["Real job listings", "Resume stays private", "Cancel anytime"].map((label) => (
+    {["Real jobs worldwide", "Resume stays private", "Cancel anytime"].map((label) => (
       <span
         key={label}
         style={{
