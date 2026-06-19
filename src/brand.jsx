@@ -10,10 +10,11 @@ export const AppLogo = ({ size = 72, className = "", style = {} }) => (
     height={size}
     className={className || undefined}
     style={{
-      borderRadius: Math.round(size * 0.22),
+      borderRadius: Math.round(size * 0.24),
       display: "block",
       objectFit: "cover",
       boxShadow: C.shadowMd,
+      border: `1px solid ${C.borderLight}`,
       ...style,
     }}
   />

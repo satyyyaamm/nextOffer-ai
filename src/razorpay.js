@@ -1,3 +1,5 @@
+import { C } from "./theme";
+
 /** Load Razorpay Checkout script once. */
 export function loadRazorpayScript() {
   if (typeof window === "undefined") {
@@ -40,7 +42,7 @@ export function openRazorpaySubscriptionCheckout(checkout, { onSuccess, onDismis
           name: checkout.customerName || "",
           email: checkout.email || "",
         },
-        theme: { color: "#0F766E" },
+        theme: { color: C.accent },
         handler(response) {
           onSuccess?.(response);
           resolve(response);

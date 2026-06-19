@@ -1,29 +1,37 @@
-/** Light professional design tokens — teal / green (trust + clarity) */
+/** Premium light design tokens — teal / green (trust + clarity) */
 export const C = {
-  bg: "#F8FAFC",
+  bg: "#F4F7FA",
   surface: "#FFFFFF",
+  surfaceMuted: "#F8FAFC",
   card: "#FFFFFF",
   border: "#E2E8F0",
-  text: "#0F172A",
-  sub: "#64748B",
+  borderLight: "#EEF2F6",
+  text: "#0B1220",
+  sub: "#5B6478",
   muted: "#94A3B8",
   accent: "#0F766E",
   accentHover: "#0D9488",
-  accentLight: "#0D9488",
-  accentSoft: "#CCFBF1",
-  accentGlow: "rgba(15, 118, 110, 0.12)",
+  accentLight: "#14B8A6",
+  accentSoft: "#E6FAF7",
+  accentGlow: "rgba(15, 118, 110, 0.14)",
+  accentGradient: "linear-gradient(135deg, #0F766E 0%, #0D9488 55%, #14B8A6 100%)",
   brandHighlight: "#0F766E",
   success: "#059669",
   green: "#059669",
-  greenGlow: "rgba(5, 150, 105, 0.1)",
+  greenGlow: "rgba(5, 150, 105, 0.12)",
   warning: "#D97706",
   amber: "#D97706",
   danger: "#DC2626",
   red: "#DC2626",
-  shadowSm: "0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04)",
-  shadowMd: "0 4px 16px rgba(15, 23, 42, 0.08)",
-  shadowLg: "0 12px 40px rgba(15, 23, 42, 0.12)",
-  loginGradient: "linear-gradient(180deg, #F8FAFC 0%, #F0FDFA 100%)",
+  shadowSm: "0 1px 2px rgba(11, 18, 32, 0.04), 0 4px 12px rgba(11, 18, 32, 0.05)",
+  shadowMd: "0 4px 6px rgba(11, 18, 32, 0.04), 0 12px 28px rgba(11, 18, 32, 0.08)",
+  shadowLg: "0 8px 16px rgba(11, 18, 32, 0.06), 0 24px 48px rgba(11, 18, 32, 0.1)",
+  shadowAccent: "0 4px 14px rgba(15, 118, 110, 0.28)",
+  loginGradient: "linear-gradient(165deg, #F8FAFC 0%, #F0FDFA 45%, #ECFDF5 100%)",
+  radiusSm: 10,
+  radiusMd: 14,
+  radiusLg: 18,
+  radiusXl: 22,
 };
 
 export const font = "'Inter', 'Segoe UI', system-ui, sans-serif";
@@ -79,9 +87,9 @@ export const TOP_CITIES_BY_REGION = {
 
 export const btnPrimary = {
   width: "100%",
-  padding: "14px 16px",
-  borderRadius: 12,
-  background: C.accent,
+  padding: "14px 18px",
+  borderRadius: C.radiusMd,
+  background: C.accentGradient,
   color: "#fff",
   fontSize: 15,
   fontWeight: 600,
@@ -91,13 +99,14 @@ export const btnPrimary = {
   gap: 10,
   border: "none",
   cursor: "pointer",
-  transition: "background 0.15s ease, transform 0.1s ease",
+  boxShadow: C.shadowAccent,
+  transition: "transform 0.15s ease, box-shadow 0.2s ease, filter 0.15s ease",
 };
 
 export const cardStyle = {
   background: C.surface,
-  borderRadius: 16,
-  border: `1px solid ${C.border}`,
+  borderRadius: C.radiusLg,
+  border: `1px solid ${C.borderLight}`,
   boxShadow: C.shadowSm,
 };
 

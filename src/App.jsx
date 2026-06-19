@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { signOut, onAuthStateChanged } from "firebase/auth";
 import { auth } from "./firebase";
 import { bootstrapAuth, authErrorMessage } from "./auth";
@@ -54,8 +54,10 @@ import {
   DataPrivacyModal,
   KitDocumentViewer,
 } from "./ui";
-import { AppLogo } from "./brand";
 import { LandingPage } from "./landing/LandingPage";
+import { HelpFaqProvider, useHelpFaq } from "./help/HelpFaqContext";
+import { HelpFaqWidget } from "./help/HelpFaqWidget";
+import { applyDocumentSeo } from "./seo";
 
 // ─── Shared UI ───────────────────────────────────────────────────────────────
 
@@ -72,6 +74,9 @@ const GlobalStyle = () => (
       --c-accent:${C.accent};
       --c-accent-hover:${C.accentHover};
       --c-accent-soft:${C.accentSoft};
+      --c-accent-gradient:${C.accentGradient};
+      --c-surface-muted:${C.surfaceMuted};
+      --c-border-light:${C.borderLight};
       --c-brand:${C.brandHighlight};
       --c-success:${C.success};
       --c-danger:${C.danger};
@@ -81,11 +86,16 @@ const GlobalStyle = () => (
       --c-shadow-md:${C.shadowMd};
     }
     *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
-    body{background:${C.bg};color:${C.text};font-family:${font};width:100%;overflow-x:hidden;}
+    body{background:${C.bg};color:${C.text};font-family:${font};width:100%;overflow-x:hidden;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;}
     html{width:100%;overflow-x:hidden;}
     #root{width:100%;max-width:100%;}
     input,textarea,select{outline:none;font-family:${font};color:${C.text};}
+    input:focus-visible,textarea:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid ${C.accent};outline-offset:2px;}
+    ::selection{background:${C.accentSoft};color:${C.text};}
     button{cursor:pointer;border:none;background:transparent;font-family:${font};}
+    .btn-premium{background:${C.accentGradient};color:#fff;box-shadow:${C.shadowAccent};border:none;font-weight:600;transition:transform 0.15s ease,box-shadow 0.2s ease,filter 0.15s ease;}
+    .btn-premium:hover:not(:disabled){filter:brightness(1.04);box-shadow:0 6px 20px rgba(15,118,110,0.32);transform:translateY(-1px);}
+    .btn-premium:active:not(:disabled){transform:translateY(0);}
     button:active:not(:disabled){transform:scale(0.98);}
     a{color:${C.accent};}
   `}</style>
@@ -345,6 +355,15 @@ function isSearchLimitResponse(data) {
 
 function isInsufficientSearchResponse(data) {
   return data?.insufficientResults === true;
+}
+
+function HelpFaqContextSync({ screen, showUpgrade }) {
+  const { setContext } = useHelpFaq();
+  useEffect(() => {
+    const mobileDockVisible = screen === "jobs" || screen === "detail";
+    setContext({ screen, mobileDockVisible, upgradeModalOpen: showUpgrade });
+  }, [screen, showUpgrade, setContext]);
+  return null;
 }
 
 const DashboardScreen = ({ userProfile, onProfileUpdate, showProBanner, onShowProBanner, onDismissProBanner, profileLoading, profileError }) => {
@@ -759,6 +778,7 @@ const DashboardScreen = ({ userProfile, onProfileUpdate, showProBanner, onShowPr
       userEmail={auth.currentUser?.email || ""}
       kitCount={kitCount}
     >
+      <HelpFaqContextSync screen={screen} showUpgrade={showUpgrade} />
       <DataPrivacyModal
         open={dataPrivacyOpen}
         onClose={() => !deletingData && setDataPrivacyOpen(false)}
@@ -923,7 +943,11 @@ const ResumeScreen = ({ isPro, loading, hasExistingProfile, uploadLimitReached, 
   return (
     <PageMain variant="form">
       <MobileOnly>
-        <Header title={hasExistingProfile ? "Update resume" : "Upload resume"} onLogout={onLogout} />
+        <Header
+          title={hasExistingProfile ? "Update resume" : "Upload resume"}
+          subtitle="Upload a PDF or paste your resume to build your job search profile."
+          onLogout={onLogout}
+        />
         {!hasExistingProfile && <StepProgress current="resume" />}
       </MobileOnly>
       <PageTitle
@@ -1035,7 +1059,11 @@ const FiltersScreen = ({ profile, isPro, searchLimitReached, loading, onSearch, 
     <PageMain variant="full">
       <div className="filters-screen-header">
         <MobileOnly>
-          <Header title="Search jobs" onLogout={onLogout} />
+          <Header
+            title="Search jobs"
+            subtitle="Set filters to find roles that match your profile."
+            onLogout={onLogout}
+          />
           <StepProgress current="filters" />
         </MobileOnly>
         <PageTitle title="Search jobs" subtitle="Set filters to find roles that match your profile." />
@@ -1378,11 +1406,13 @@ const ApplicationKitScreen = ({
   const selectKit = (kit) => {
     setSelectedKey(kit.kitKey || kit.jobKey);
     setTab("resume");
-    setMobileShowViewer(true);
+    if (typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches) {
+      setMobileShowViewer(true);
+    }
   };
 
   const docBadges = (kit) => (
-    <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+    <div className="kit-library-item__badges">
       {kit.hasResume && (
         <span style={{ fontSize: 10, fontWeight: 600, color: C.success, background: C.greenGlow, padding: "2px 8px", borderRadius: 100 }}>Resume</span>
       )}
@@ -1399,7 +1429,11 @@ const ApplicationKitScreen = ({
     <PageMain variant="full">
       <div className="kit-screen-header">
         <MobileOnly>
-          <Header title="Application kit" onLogout={onLogout} />
+          <Header
+            title="Application kit"
+            subtitle="All your saved resumes, cover letters, and emails."
+            onLogout={onLogout}
+          />
         </MobileOnly>
         <PageTitle title="Application kit" subtitle="All your saved resumes, cover letters, and emails." />
       </div>
@@ -1438,11 +1472,11 @@ const ApplicationKitScreen = ({
                 className={`kit-library-item${selectedKey === (kit.kitKey || kit.jobKey) ? " kit-library-item--active" : ""}`}
                 onClick={() => selectKit(kit)}
               >
-                <div style={{ fontWeight: 600, fontSize: 14, color: C.text, lineHeight: 1.35 }}>{kit.jobTitle}</div>
-                {kit.company && <div style={{ fontSize: 13, color: C.sub, marginTop: 4 }}>{kit.company}</div>}
-                {kit.location && <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>{kit.location}</div>}
+                <div className="kit-library-item__title">{kit.jobTitle}</div>
+                {kit.company && <div className="kit-library-item__company">{kit.company}</div>}
+                {kit.location && <div className="kit-library-item__location">{kit.location}</div>}
                 {kit.updatedAt && (
-                  <div style={{ fontSize: 11, color: C.muted, marginTop: 6 }}>{formatKitDate(kit.updatedAt)}</div>
+                  <div className="kit-library-item__date">{formatKitDate(kit.updatedAt)}</div>
                 )}
                 {docBadges(kit)}
               </button>
@@ -2303,14 +2337,18 @@ const UpgradeModal = ({ reason, onUpgrade, onClose, processing }) => {
 
 // ─── Layout helpers ──────────────────────────────────────────────────────────
 
-const Header = ({ title, onLogout }) => (
-  <div className="mobile-screen-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, gap: 12 }}>
-    <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flex: 1 }}>
-      <MobileNavToggle />
-      <AppLogo size={36} style={{ boxShadow: C.shadowSm, flexShrink: 0 }} />
-      <h2 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: 0, lineHeight: 1.25, minWidth: 0 }}>{title}</h2>
+const Header = ({ title, subtitle, onLogout }) => (
+  <div className="mobile-screen-header">
+    <div className="mobile-screen-header__row">
+      <div className="mobile-screen-header__main">
+        <MobileNavToggle className="mobile-screen-header__menu" />
+        <div className="mobile-screen-header__text">
+          <h2 className="mobile-screen-header__title">{title}</h2>
+          {subtitle && <p className="mobile-screen-header__subtitle">{subtitle}</p>}
+        </div>
+      </div>
+      <LogoutBtn onLogout={onLogout} />
     </div>
-    <LogoutBtn onLogout={onLogout} />
   </div>
 );
 
@@ -2451,6 +2489,27 @@ export default function App() {
     };
   }, [refreshProfile]);
 
+  const helpBaseContext = useMemo(
+    () => ({
+      isLoggedIn: Boolean(user),
+      isPro: userProfile?.tier === "pro",
+      hasResume: Boolean(userProfile?.parsedProfile?.title),
+    }),
+    [user, userProfile],
+  );
+
+  useEffect(() => {
+    if (loading || authBootstrapping) return;
+    if (user) {
+      applyDocumentSeo({
+        title: "App — NextOffer.ai",
+        noindex: true,
+      });
+    } else {
+      applyDocumentSeo({ noindex: false });
+    }
+  }, [user, loading, authBootstrapping]);
+
   if (loading || authBootstrapping) {
     return (
       <div
@@ -2474,9 +2533,11 @@ export default function App() {
   }
 
   return (
+    <HelpFaqProvider baseContext={helpBaseContext}>
     <div className="app-root">
       <GlobalStyle />
       <CookieConsentBanner />
+      <HelpFaqWidget />
       {!user ? (
         <LandingScreen initialError={loginError} />
       ) : (
@@ -2491,5 +2552,6 @@ export default function App() {
         />
       )}
     </div>
+    </HelpFaqProvider>
   );
 }

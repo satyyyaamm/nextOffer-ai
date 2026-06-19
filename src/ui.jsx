@@ -4,6 +4,7 @@ import { AppLogo } from "./brand";
 import { IconLock, IconShield, IconCreditCard, IconCheck, IconUpload, IconSearch, IconBuilding, IconExternalLink, IconMenu, IconX } from "./icons";
 import { setAnalyticsConsent, shouldShowConsentBanner, subscribeAnalyticsConsent } from "./consent";
 import { initAnalyticsAfterConsent } from "./analytics";
+import { useHelpFaq } from "./help/HelpFaqContext";
 
 const MobileNavContext = createContext(null);
 
@@ -211,11 +212,11 @@ export function DataPrivacyModal({ open, onClose, onDeleteResume, onDeleteAccoun
 }
 
 export const TrustBadge = ({ icon: Icon, text }) => (
-  <div style={{ display: "flex", alignItems: "flex-start", gap: 10, fontSize: 13, color: C.sub, lineHeight: 1.5 }}>
-    <span style={{ color: C.success, flexShrink: 0, marginTop: 1 }}>
-      {Icon ? <Icon size={16} color={C.success} /> : null}
+  <div className="trust-badge">
+    <span className="trust-badge__icon" aria-hidden="true">
+      {Icon ? <Icon size={15} color={C.accent} /> : <IconCheck size={15} color={C.success} />}
     </span>
-    {text}
+    <span className="trust-badge__text">{text}</span>
   </div>
 );
 
@@ -450,9 +451,9 @@ export const SecurityBanner = () => (
 
 export const primaryBtnStyle = (disabled = false) => ({
   width: "100%",
-  padding: "14px 16px",
-  borderRadius: 12,
-  background: disabled ? C.border : C.accent,
+  padding: "14px 18px",
+  borderRadius: C.radiusMd,
+  background: disabled ? C.border : C.accentGradient,
   color: disabled ? C.muted : "#fff",
   fontSize: 15,
   fontWeight: 600,
@@ -463,6 +464,8 @@ export const primaryBtnStyle = (disabled = false) => ({
   border: "none",
   cursor: disabled ? "not-allowed" : "pointer",
   fontFamily: font,
+  boxShadow: disabled ? "none" : C.shadowAccent,
+  transition: "transform 0.15s ease, box-shadow 0.2s ease, filter 0.15s ease",
 });
 
 export const outlineBtnStyle = {
@@ -752,7 +755,6 @@ export const DesktopOnly = ({ children, className = "" }) => (
 
 export const PageTitle = ({ title, subtitle }) => (
   <div className="page-title desktop-only">
-    <AppLogo size={44} style={{ marginBottom: 12, boxShadow: C.shadowSm }} />
     <h1>{title}</h1>
     {subtitle && <p>{subtitle}</p>}
   </div>
@@ -786,6 +788,7 @@ export function AppSidebar({
   kitCount = 0,
   variant = "desktop",
 }) {
+  const { open: openHelp } = useHelpFaq();
   const activeScreen = screen === "detail" ? "jobs" : screen;
   const isDrawer = variant === "mobile";
 
@@ -862,6 +865,16 @@ export function AppSidebar({
             {userEmail}
           </div>
         )}
+        <button
+          type="button"
+          className="sidebar-help-link"
+          onClick={() => {
+            openHelp();
+            onClose?.();
+          }}
+        >
+          Help &amp; FAQ
+        </button>
         <button
           type="button"
           className="sidebar-privacy-link"

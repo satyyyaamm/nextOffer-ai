@@ -5,6 +5,7 @@ import { signInWithGoogle, authErrorMessage } from "../auth";
 import { GoogleLogo, IconLock, IconShield, IconCheck, IconUpload, IconSearch, IconBuilding } from "../icons";
 import { AppLogo } from "../brand";
 import { LegalFooter } from "../ui";
+import { LandingFaq } from "./LandingFaq";
 
 const Spinner = ({ size = 20, color = C.accent }) => (
   <div
@@ -24,6 +25,7 @@ const NAV_LINKS = [
   { label: "Features", href: "#features" },
   { label: "How It Works", href: "#how-it-works" },
   { label: "Pricing", href: "#pricing" },
+  { label: "FAQ", href: "#faq" },
 ];
 
 const FREE_FEATURES = [
@@ -74,10 +76,16 @@ const PRICING_PLANS = [
   },
 ];
 
+const HERO_STATS = [
+  { value: "AI-ranked", label: "Job compatibility scores" },
+  { value: "3-in-1", label: "Resume, letter & email" },
+  { value: "Secure", label: "Encrypted & private" },
+];
+
 const TRUST_ITEMS = [
   { icon: IconLock, text: "256-bit encryption" },
-  { icon: IconShield, text: "Your data is secure" },
-  { text: "Cancel anytime" },
+  { icon: IconShield, text: "Your data stays private" },
+  { icon: IconCheck, text: "Cancel anytime" },
 ];
 
 const PROCESS_STEPS = [
@@ -208,6 +216,15 @@ export function LandingPage({ initialError = "" }) {
                   Then generate personalised, ATS-proof resumes, cover letters, and cold emails so hiring teams actually see your application.
                 </p>
 
+                <div className="lp-hero__stats" aria-label="Product highlights">
+                  {HERO_STATS.map(({ value, label }) => (
+                    <div key={value} className="lp-stat">
+                      <span className="lp-stat__value">{value}</span>
+                      <span className="lp-stat__label">{label}</span>
+                    </div>
+                  ))}
+                </div>
+
                 <div className="lp-hero__flow" aria-label="What NextOffer does">
                   <span>Jobs tailored to your resume</span>
                   <span className="lp-hero__flow-arrow" aria-hidden="true">→</span>
@@ -221,7 +238,7 @@ export function LandingPage({ initialError = "" }) {
                 <div className="lp-cta" id="cta">
                   <button
                     type="button"
-                    className="lp-cta__btn btn-press"
+                    className="lp-cta__btn btn-premium btn-press"
                     onClick={() => handleLogin("hero")}
                     disabled={loading}
                   >
@@ -234,7 +251,9 @@ export function LandingPage({ initialError = "" }) {
                 <div className="lp-trust">
                   {TRUST_ITEMS.map(({ icon: Icon, text }) => (
                     <span key={text} className="lp-trust__item">
-                      {Icon ? <Icon size={16} color={C.sub} /> : null}
+                      <span className="lp-trust__icon" aria-hidden="true">
+                        {Icon ? <Icon size={15} color={C.accent} /> : null}
+                      </span>
                       {text}
                     </span>
                   ))}
@@ -269,10 +288,11 @@ export function LandingPage({ initialError = "" }) {
               How NextOffer.ai Works
             </h2>
             <ol className="lp-process__grid">
-              {PROCESS_STEPS.map(({ icon: Icon, title, description }) => (
+              {PROCESS_STEPS.map(({ icon: Icon, title, description }, index) => (
                 <li key={title} className="lp-process__step">
+                  <span className="lp-process__num" aria-hidden="true">{index + 1}</span>
                   <div className="lp-process__icon" aria-hidden="true">
-                    <Icon size={32} color={C.accent} />
+                    <Icon size={28} color={C.accent} />
                   </div>
                   <h3 className="lp-process__step-title">{title}</h3>
                   <p className="lp-process__step-desc">{description}</p>
@@ -281,6 +301,31 @@ export function LandingPage({ initialError = "" }) {
             </ol>
           </div>
         </section>
+
+        <section className="lp-security" aria-label="Security and trust">
+          <div className="lp-container">
+            <div className="lp-security__card">
+              <div className="lp-security__copy">
+                <h2 className="lp-security__title">Built for trust</h2>
+                <p className="lp-security__desc">
+                  Your resume and application data are processed on secure servers, never sold, and protected with industry-standard encryption.
+                </p>
+              </div>
+              <ul className="lp-security__list">
+                {TRUST_ITEMS.map(({ icon: Icon, text }) => (
+                  <li key={text}>
+                    <span className="lp-security__icon" aria-hidden="true">
+                      {Icon ? <Icon size={16} color={C.accent} /> : null}
+                    </span>
+                    {text}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <LandingFaq />
       </main>
 
       <footer className="lp-footer">

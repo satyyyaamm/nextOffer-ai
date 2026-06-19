@@ -1,6 +1,7 @@
 {
   "short_name": "NextOffer.ai",
-  "name": "NextOffer.ai — AI job applications",
+  "name": "NextOffer.ai — AI Job Search & ATS Application Kits",
+  "description": "Find jobs matched to your resume with AI compatibility scores. Generate tailored ATS resumes, cover letters, and cold emails.",
   "icons": [
     {
       "src": "logo.png",
