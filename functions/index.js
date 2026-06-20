@@ -39,6 +39,7 @@ const adminPassword = defineString("ADMIN_PASSWORD", { default: "" });
 const { runMultiSourceSearch } = require("./jobs/pipeline");
 const { runLinkedInAnalysis, generateLinkedInSectionContent, GENERATABLE_SECTION_IDS } = require("./linkedinOptimizer");
 const { logAiUsage } = require("./admin/aiLogger");
+const { logJSearchUsage } = require("./admin/jsearchLogger");
 const { isAdminRequest } = require("./admin/auth");
 const {
   validateAdminCredentials,
@@ -1044,7 +1045,13 @@ function buildSearchQueryVariants(profile) {
   return variants.slice(0, MAX_QUERY_VARIANTS);
 }
 
-async function requestJSearchRaw(query, filters, region, apiKey, { apiPage = 1, numPages = 1, locationOverride = null } = {}) {
+async function requestJSearchRaw(
+  query,
+  filters,
+  region,
+  apiKey,
+  { apiPage = 1, numPages = 1, locationOverride = null, logMeta = null } = {}
+) {
   const workplaces = normalizeFilterList(filters.workplace, ["Remote", "Hybrid", "On-site"]);
   const jobTypes = normalizeFilterList(filters.jobType, ["Full-time", "Part-time"]);
   const onlyRemote =
@@ -1093,6 +1100,14 @@ async function requestJSearchRaw(query, filters, region, apiKey, { apiPage = 1, 
   }
 
   const data = await response.json();
+
+  if (logMeta?.userId) {
+    logJSearchUsage(logMeta.userId, {
+      kind: logMeta.kind || "search",
+      paginateOnly: Boolean(logMeta.paginateOnly),
+    }).catch((err) => console.warn("JSearch usage log failed:", err.message));
+  }
+
   return data.data || [];
 }
 
@@ -1131,7 +1146,8 @@ function applyJobFilters(rawList, filters, region, datePostedOverride) {
 }
 
 async function fetchJSearchJobs(profile, filters, apiKey, options = {}) {
-  const { apiPage = 1, numPages = JSEARCH_INITIAL_PAGES, fixedQuery = null } = options;
+  const { apiPage = 1, numPages = JSEARCH_INITIAL_PAGES, fixedQuery = null, logMeta = null } = options;
+  const withLog = (kind) => (logMeta ? { ...logMeta, kind } : null);
   const region = REGION_MAP[filters.region?.label] || REGION_MAP["United States"];
 
   const queries = fixedQuery ? [fixedQuery] : buildSearchQueryVariants(profile);
@@ -1142,7 +1158,11 @@ async function fetchJSearchJobs(profile, filters, apiKey, options = {}) {
   for (const query of queries) {
     if (!fixedQuery && rawList.length >= MIN_JOBS_TARGET) break;
 
-    const batch = await requestJSearchRaw(query, filters, region, apiKey, { apiPage, numPages });
+    const batch = await requestJSearchRaw(query, filters, region, apiKey, {
+      apiPage,
+      numPages,
+      logMeta: withLog(fixedQuery ? "loadMore" : "queryVariant"),
+    });
     console.log(`JSearch "${query}": ${batch.length} raw (page ${apiPage}, num_pages ${numPages})`);
 
     for (const job of batch) {
@@ -1164,7 +1184,11 @@ async function fetchJSearchJobs(profile, filters, apiKey, options = {}) {
       if (rawList.length >= MIN_JOBS_TARGET) break;
       const cityFilters = { ...filters, cities: [city] };
       for (const query of queries.slice(0, 2)) {
-        const batch = await requestJSearchRaw(query, cityFilters, region, apiKey, { apiPage, numPages });
+        const batch = await requestJSearchRaw(query, cityFilters, region, apiKey, {
+          apiPage,
+          numPages,
+          logMeta: withLog("cityVariant"),
+        });
         for (const job of batch) {
           const id = job.job_id || `${job.job_title}-${job.employer_name}-${job.job_city}`;
           if (!seen.has(id)) {
@@ -1204,7 +1228,11 @@ async function fetchJSearchJobs(profile, filters, apiKey, options = {}) {
     const monthFilters = { ...filters, datePosted: "month" };
     const seenMonth = new Set(seen);
     for (const query of queries.slice(0, 2)) {
-      const batch = await requestJSearchRaw(query, monthFilters, region, apiKey, { apiPage, numPages });
+      const batch = await requestJSearchRaw(query, monthFilters, region, apiKey, {
+        apiPage,
+        numPages,
+        logMeta: withLog("dateFallback"),
+      });
       for (const job of batch) {
         const id = job.job_id || `${job.job_title}-${job.employer_name}-${job.job_city}`;
         if (!seenMonth.has(id)) {
@@ -1606,13 +1634,16 @@ exports.searchJobs = onCall(
         : { code: "USD", symbol: "$" },
     };
 
+    const jsearchLogMeta = { userId, paginateOnly: isLoadMore };
+
     const fetchOpts = isLoadMore
       ? {
           apiPage: pageNum,
           numPages: 1,
           fixedQuery: user.lastJobSearch?.query || cleanJobTitle(profile.title),
+          logMeta: { ...jsearchLogMeta, kind: "loadMore" },
         }
-      : { apiPage: 1, numPages: JSEARCH_INITIAL_PAGES };
+      : { apiPage: 1, numPages: JSEARCH_INITIAL_PAGES, logMeta: { ...jsearchLogMeta, kind: "search" } };
 
     const {
       jobs: rawJobs,

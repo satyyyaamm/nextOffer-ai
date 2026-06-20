@@ -31,15 +31,15 @@ const tooltipStyle = {
 };
 
 function ChartCard({ title, subtitle, children, height = 280 }) {
+  const sizeClass =
+    height >= 320 ? "admin-chart-card__body--xl" : height >= 300 ? "admin-chart-card__body--lg" : height >= 220 ? "admin-chart-card__body--md" : "admin-chart-card__body--sm";
   return (
     <div className="admin-chart-card" style={cardStyle}>
       <div className="admin-chart-card__head">
         <h3>{title}</h3>
         {subtitle && <p>{subtitle}</p>}
       </div>
-      <div className="admin-chart-card__body" style={{ height }}>
-        {children}
-      </div>
+      <div className={`admin-chart-card__body ${sizeClass}`}>{children}</div>
     </div>
   );
 }
@@ -287,6 +287,37 @@ export function SignupsSparkline({ series = [] }) {
           <YAxis tick={{ fill: C.muted, fontSize: 10 }} axisLine={false} tickLine={false} width={32} allowDecimals={false} />
           <Tooltip {...tooltipStyle} formatter={(value) => [value, "Calls"]} />
           <Area type="monotone" dataKey="calls" stroke={C.success} strokeWidth={2} fill="url(#adminCallsGrad)" dot={false} />
+        </AreaChart>
+      </ResponsiveContainer>
+    </ChartCard>
+  );
+}
+
+export function JSearchUsageChart({ series = [] }) {
+  const data = series.map((d) => ({
+    date: formatShortDate(d.date),
+    requests: d.requests || 0,
+  }));
+
+  if (!data.some((d) => d.requests > 0)) {
+    return <p className="admin-chart-empty">No JSearch requests logged yet. Deploy functions to start tracking.</p>;
+  }
+
+  return (
+    <ChartCard title="JSearch API usage" subtitle="RapidAPI credits consumed — last 30 days (1 HTTP call = 1 credit)" height={300}>
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={data} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
+          <defs>
+            <linearGradient id="adminJsearchGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={C.amber} stopOpacity={0.35} />
+              <stop offset="100%" stopColor={C.amber} stopOpacity={0.02} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid stroke={C.borderLight} strokeDasharray="4 4" vertical={false} />
+          <XAxis dataKey="date" tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+          <YAxis tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
+          <Tooltip {...tooltipStyle} formatter={(value) => [value, "Requests"]} />
+          <Area type="monotone" dataKey="requests" stroke={C.amber} strokeWidth={2} fill="url(#adminJsearchGrad)" dot={false} />
         </AreaChart>
       </ResponsiveContainer>
     </ChartCard>

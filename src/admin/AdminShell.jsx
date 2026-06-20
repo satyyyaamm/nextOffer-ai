@@ -8,6 +8,7 @@ const ADMIN_NAV = [
   { id: "overview", label: "Overview", icon: IconBarChart },
   { id: "users", label: "Users", icon: IconBuilding },
   { id: "checkout", label: "Checkout", icon: IconCreditCard },
+  { id: "costs", label: "Costs", icon: IconCreditCard },
   { id: "ai-spend", label: "AI spend", icon: IconUpload },
   { id: "activity", label: "Activity", icon: IconSearch },
   { id: "errors", label: "Errors", icon: IconX },

@@ -1,5 +1,6 @@
 const admin = require("firebase-admin");
 const { dayKey } = require("./aiLogger");
+const { pickJSearchPlan, projectMonthlyCosts, JSEARCH } = require("./costModel");
 
 const db = admin.firestore();
 
@@ -51,6 +52,43 @@ async function fetchCurrentMonthAi() {
     outputTokens: data.outputTokens || 0,
     estimatedUsd: Number((data.estimatedUsd || 0).toFixed(4)),
     byAction: data.byAction || {},
+  };
+}
+
+async function fetchJSearchSeries(days = 30) {
+  const series = [];
+  const now = new Date();
+  for (let i = days - 1; i >= 0; i -= 1) {
+    const d = new Date(now);
+    d.setUTCDate(d.getUTCDate() - i);
+    const key = dayKey(d);
+    const doc = await db.collection("adminMetrics").doc("jsearch").collection("daily").doc(key).get();
+    const data = doc.data() || {};
+    series.push({
+      date: key,
+      requests: data.totalRequests || 0,
+      byKind: data.byKind || {},
+    });
+  }
+  return series;
+}
+
+async function fetchCurrentMonthJSearch() {
+  const month = new Date().toISOString().slice(0, 7);
+  const doc = await db.collection("adminMetrics").doc("jsearch").collection("monthly").doc(month).get();
+  const data = doc.data() || {};
+  const totalRequests = data.totalRequests || 0;
+  const plan = pickJSearchPlan(totalRequests);
+  const reqPerSearch = JSEARCH.avgRequestsPerSearch * (1 - JSEARCH.cacheHitRate);
+  return {
+    month,
+    totalRequests,
+    byKind: data.byKind || {},
+    estimatedPlan: plan.plan.label,
+    estimatedUsd: plan.totalUsd === Infinity ? null : Number(plan.totalUsd.toFixed(2)),
+    overageRequests: plan.overageRequests || 0,
+    overQuota: plan.totalUsd === Infinity,
+    searchesEstimated: reqPerSearch > 0 ? Math.round(totalRequests / reqPerSearch) : 0,
   };
 }
 
@@ -228,15 +266,32 @@ async function listUsers({ limit = 50, startAfterId = null } = {}) {
 }
 
 async function buildAdminDashboard() {
-  const [userStats, activityCounts, aiMonth, aiSeries, recentErrors] = await Promise.all([
-    scanUserMetrics(),
-    fetchActivityCounts(),
-    fetchCurrentMonthAi(),
-    fetchAiSpendSeries(30),
-    fetchRecentErrors(15),
-  ]);
+  const [userStats, activityCounts, aiMonth, aiSeries, jsearchMonth, jsearchSeries, recentErrors] =
+    await Promise.all([
+      scanUserMetrics(),
+      fetchActivityCounts(),
+      fetchCurrentMonthAi(),
+      fetchAiSpendSeries(30),
+      fetchCurrentMonthJSearch(),
+      fetchJSearchSeries(30),
+      fetchRecentErrors(15),
+    ]);
 
   const aiSeriesTotal = aiSeries.reduce((sum, d) => sum + (d.estimatedUsd || 0), 0);
+  const jsearchSeriesTotal = jsearchSeries.reduce((sum, d) => sum + (d.requests || 0), 0);
+
+  const proPercent =
+    userStats.totalUsers > 0
+      ? Number(((userStats.proUsers / userStats.totalUsers) * 100).toFixed(1))
+      : 5;
+
+  const costProjection = projectMonthlyCosts({
+    totalUsers: userStats.totalUsers || 100,
+    proPercent,
+    proHeavyPercent: 20,
+    proSearchesPerDay: 3,
+    freeActivePercent: 70,
+  });
 
   return {
     generatedAt: new Date().toISOString(),
@@ -259,6 +314,13 @@ async function buildAdminDashboard() {
       dailySeries: aiSeries,
       pricingNote: "Claude Haiku 4.5 @ $1/M input, $5/M output (estimated from logged token usage)",
     },
+    jsearch: {
+      currentMonth: jsearchMonth,
+      last30DaysRequests: jsearchSeriesTotal,
+      dailySeries: jsearchSeries,
+      pricingNote: "RapidAPI JSearch — 1 HTTP request = 1 credit (Basic free 200/mo, Pro $25/10k)",
+    },
+    costProjection,
     freeTierUsage: {
       usedSearch: userStats.hitFreeSearchLimit,
       usedUpload: userStats.hitFreeUploadLimit,

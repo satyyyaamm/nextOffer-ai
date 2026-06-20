@@ -70,7 +70,7 @@ export function AdminLoginScreen({ onSuccess }) {
                   padding: "12px 14px",
                   borderRadius: 10,
                   border: `1px solid ${C.border}`,
-                  fontSize: 14,
+                  fontSize: 16,
                   background: C.surface,
                 }}
               />
@@ -88,7 +88,7 @@ export function AdminLoginScreen({ onSuccess }) {
                   padding: "12px 14px",
                   borderRadius: 10,
                   border: `1px solid ${C.border}`,
-                  fontSize: 14,
+                  fontSize: 16,
                   background: C.surface,
                 }}
               />

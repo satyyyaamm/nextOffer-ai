@@ -10,9 +10,11 @@ import {
   AiSpendTrendChart,
   CheckoutFunnelChart,
   FreeUsageChart,
+  JSearchUsageChart,
   SignupsSparkline,
   UserTierDonutChart,
 } from "./AdminCharts";
+import { CostCalculator } from "./CostCalculator";
 
 const Spinner = ({ size = 20 }) => (
   <div
@@ -31,12 +33,10 @@ function KpiCard({ label, value, sub, accent }) {
   return (
     <div className="admin-kpi-card" style={{ ...cardStyle, padding: 16 }}>
       <div className="page-title" style={{ marginBottom: 8 }}>
-        <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: 0.4, margin: 0 }}>
-          {label}
-        </p>
+        <p className="admin-kpi-label">{label}</p>
       </div>
-      <div style={{ fontSize: 28, fontWeight: 800, color: accent || C.text, lineHeight: 1.1, letterSpacing: "-0.02em" }}>{value}</div>
-      {sub && <div style={{ fontSize: 12, color: C.sub, marginTop: 6, lineHeight: 1.45 }}>{sub}</div>}
+      <div className="admin-kpi-value" style={{ color: accent || C.text }}>{value}</div>
+      {sub && <div className="admin-kpi-sub">{sub}</div>}
     </div>
   );
 }
@@ -62,6 +62,16 @@ function OverviewSection({ dashboard }) {
         <KpiCard label="Pro subscribers" value={u.proUsers ?? 0} sub={`${u.proWeekly ?? 0} weekly · ${u.proMonthly ?? 0} monthly`} accent={C.success} />
         <KpiCard label="Free users" value={u.freeUsers ?? 0} sub={`${u.withResume ?? 0} with resume`} />
         <KpiCard label="AI spend (30d)" value={`$${(ai.last30DaysUsd ?? 0).toFixed(2)}`} sub={`${ai.currentMonth?.totalCalls ?? 0} calls this month`} accent={C.accent} />
+        <KpiCard
+          label="JSearch (mo)"
+          value={(dashboard?.jsearch?.currentMonth?.totalRequests ?? 0).toLocaleString()}
+          sub={
+            dashboard?.jsearch?.currentMonth?.estimatedUsd != null
+              ? `$${dashboard.jsearch.currentMonth.estimatedUsd.toFixed(2)} · ${dashboard.jsearch.currentMonth.estimatedPlan || "Basic"}`
+              : "Deploy functions to log usage"
+          }
+          accent={C.amber}
+        />
       </div>
 
       <div className="admin-charts-grid admin-charts-grid--2">
@@ -93,6 +103,18 @@ function CheckoutSection({ dashboard }) {
       </div>
       <div style={{ marginTop: 16 }}>
         <CheckoutFunnelChart funnel={funnel} />
+      </div>
+    </>
+  );
+}
+
+function CostsSection({ dashboard }) {
+  const jsearch = dashboard?.jsearch || {};
+  return (
+    <>
+      <CostCalculator dashboard={dashboard} />
+      <div style={{ marginTop: 16 }}>
+        <JSearchUsageChart series={jsearch.dailySeries || []} />
       </div>
     </>
   );
@@ -139,75 +161,128 @@ function ErrorsSection({ dashboard }) {
     return <p style={{ color: C.sub, fontSize: 14 }}>No recent client errors.</p>;
   }
   return (
-    <div style={{ ...cardStyle, overflow: "hidden" }}>
-      <table className="admin-table">
-        <thead>
-          <tr>
-            <th>When</th>
-            <th>Screen</th>
-            <th>Message</th>
-          </tr>
-        </thead>
-        <tbody>
-          {errors.map((e) => (
-            <tr key={e.id}>
-              <td>{e.createdAt ? new Date(e.createdAt).toLocaleString() : "—"}</td>
-              <td>{e.screen || "—"}</td>
-              <td>{e.message}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <>
+      <div className="admin-user-cards mobile-only">
+        {errors.map((e) => (
+          <div key={e.id} className="admin-user-card" style={cardStyle}>
+            <div className="admin-user-card__meta">
+              {e.createdAt ? new Date(e.createdAt).toLocaleString() : "—"}
+              {e.screen ? ` · ${e.screen}` : ""}
+            </div>
+            <p className="admin-user-card__message">{e.message}</p>
+          </div>
+        ))}
+      </div>
+      <div className="admin-table-wrap desktop-only">
+        <div style={{ ...cardStyle, overflow: "hidden" }}>
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>When</th>
+                <th>Screen</th>
+                <th>Message</th>
+              </tr>
+            </thead>
+            <tbody>
+              {errors.map((e) => (
+                <tr key={e.id}>
+                  <td>{e.createdAt ? new Date(e.createdAt).toLocaleString() : "—"}</td>
+                  <td>{e.screen || "—"}</td>
+                  <td>{e.message}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </>
   );
 }
 
 function UsersSection({ users, hasMoreUsers, usersLoading, onLoadMore }) {
   return (
     <>
-      <div style={{ ...cardStyle, overflow: "auto" }}>
-        <table className="admin-table">
-          <thead>
-            <tr>
-              <th>Email</th>
-              <th>Tier</th>
-              <th>Resume</th>
-              <th>Usage (mo)</th>
-              <th>Checkout</th>
-              <th>Joined</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((row) => {
-              const badge = checkoutBadge(row.checkoutStatus);
-              return (
-                <tr key={row.id}>
-                  <td>
-                    <div style={{ fontWeight: 600, color: C.text }}>{row.email || row.id.slice(0, 8)}</div>
-                    <div style={{ fontSize: 11, color: C.muted }}>{row.name}</div>
-                  </td>
-                  <td>{row.tier === "pro" ? `Pro (${row.proPlan || "?"})` : "Free"}</td>
-                  <td>{row.hasResume ? "Yes" : "No"}</td>
-                  <td style={{ fontSize: 12, lineHeight: 1.5 }}>
-                    S:{row.searchesThisMonth} U:{row.uploadsThisMonth}
-                    {row.kitUsedThisMonth ? " · Kit" : ""}
-                    {row.linkedinThisMonth ? " · LI" : ""}
-                  </td>
-                  <td>
-                    <span style={{ color: badge.color, fontWeight: 600, fontSize: 12 }}>{badge.text}</span>
-                    {row.checkoutAttempts > 0 && (
-                      <div style={{ fontSize: 11, color: C.muted }}>{row.checkoutAttempts} attempt(s)</div>
-                    )}
-                  </td>
-                  <td style={{ fontSize: 12, color: C.sub }}>
-                    {row.createdAt ? new Date(row.createdAt).toLocaleDateString() : "—"}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      <div className="admin-user-cards mobile-only">
+        {users.map((row) => {
+          const badge = checkoutBadge(row.checkoutStatus);
+          return (
+            <div key={row.id} className="admin-user-card" style={cardStyle}>
+              <div className="admin-user-card__head">
+                <div className="admin-user-card__email">{row.email || row.id.slice(0, 8)}</div>
+                <span className="admin-user-card__tier">{row.tier === "pro" ? `Pro · ${row.proPlan || "?"}` : "Free"}</span>
+              </div>
+              {row.name && <div className="admin-user-card__name">{row.name}</div>}
+              <div className="admin-user-card__row">
+                <span>Resume</span>
+                <strong>{row.hasResume ? "Yes" : "No"}</strong>
+              </div>
+              <div className="admin-user-card__row">
+                <span>Usage (mo)</span>
+                <strong>
+                  S:{row.searchesThisMonth} U:{row.uploadsThisMonth}
+                  {row.kitUsedThisMonth ? " · Kit" : ""}
+                  {row.linkedinThisMonth ? " · LI" : ""}
+                </strong>
+              </div>
+              <div className="admin-user-card__row">
+                <span>Checkout</span>
+                <strong style={{ color: badge.color }}>{badge.text}</strong>
+              </div>
+              <div className="admin-user-card__meta">
+                Joined {row.createdAt ? new Date(row.createdAt).toLocaleDateString() : "—"}
+                {row.checkoutAttempts > 0 ? ` · ${row.checkoutAttempts} checkout attempt(s)` : ""}
+              </div>
+            </div>
+          );
+        })}
       </div>
+
+      <div className="admin-table-wrap admin-table-wrap--wide desktop-only">
+        <div style={{ ...cardStyle, overflow: "hidden" }}>
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>Email</th>
+                <th>Tier</th>
+                <th>Resume</th>
+                <th>Usage (mo)</th>
+                <th>Checkout</th>
+                <th>Joined</th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map((row) => {
+                const badge = checkoutBadge(row.checkoutStatus);
+                return (
+                  <tr key={row.id}>
+                    <td>
+                      <div style={{ fontWeight: 600, color: C.text }}>{row.email || row.id.slice(0, 8)}</div>
+                      <div style={{ fontSize: 11, color: C.muted }}>{row.name}</div>
+                    </td>
+                    <td>{row.tier === "pro" ? `Pro (${row.proPlan || "?"})` : "Free"}</td>
+                    <td>{row.hasResume ? "Yes" : "No"}</td>
+                    <td style={{ fontSize: 12, lineHeight: 1.5 }}>
+                      S:{row.searchesThisMonth} U:{row.uploadsThisMonth}
+                      {row.kitUsedThisMonth ? " · Kit" : ""}
+                      {row.linkedinThisMonth ? " · LI" : ""}
+                    </td>
+                    <td>
+                      <span style={{ color: badge.color, fontWeight: 600, fontSize: 12 }}>{badge.text}</span>
+                      {row.checkoutAttempts > 0 && (
+                        <div style={{ fontSize: 11, color: C.muted }}>{row.checkoutAttempts} attempt(s)</div>
+                      )}
+                    </td>
+                    <td style={{ fontSize: 12, color: C.sub }}>
+                      {row.createdAt ? new Date(row.createdAt).toLocaleDateString() : "—"}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       {hasMoreUsers && (
         <button type="button" onClick={onLoadMore} disabled={usersLoading} style={{ ...primaryBtnStyle(usersLoading), marginTop: 12 }}>
           {usersLoading ? "Loading…" : "Load more users"}
@@ -222,6 +297,7 @@ const SECTION_TITLES = {
   users: { title: "Users", subtitle: "All sign-ups with tier, usage, and checkout status." },
   checkout: { title: "Checkout funnel", subtitle: "Razorpay conversion and drop-off." },
   "ai-spend": { title: "AI spend", subtitle: "Token usage and estimated cost (Haiku 4.5)." },
+  costs: { title: "Cost model", subtitle: "Infra projections, JSearch burn, and margin calculator." },
   activity: { title: "Product activity", subtitle: "Documents, kits, searches, and errors." },
   errors: { title: "Client errors", subtitle: "Recent frontend errors from users." },
 };
@@ -312,6 +388,8 @@ export function AdminPanel({ onLogout }) {
         return <CheckoutSection dashboard={dashboard} />;
       case "ai-spend":
         return <AiSpendSection dashboard={dashboard} />;
+      case "costs":
+        return <CostsSection dashboard={dashboard} />;
       case "activity":
         return <ActivitySection dashboard={dashboard} />;
       case "errors":
@@ -350,14 +428,14 @@ export function AdminPanel({ onLogout }) {
             </button>
           </div>
           {dashboard?.generatedAt && (
-            <p style={{ fontSize: 12, color: C.muted, margin: "8px 0 0" }}>
+            <p className="admin-updated-at" style={{ fontSize: 12, color: C.muted, margin: "8px 0 0" }}>
               Updated {new Date(dashboard.generatedAt).toLocaleString()}
             </p>
           )}
         </header>
 
         <div className="kit-screen-content">
-          <div className="kit-screen-body">{renderSection()}</div>
+          <div className="kit-screen-body admin-panel-body">{renderSection()}</div>
         </div>
       </div>
     </AdminShell>
