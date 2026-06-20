@@ -1412,6 +1412,116 @@ body,
   }
 }
 
+/* ─── Search jobs nested route (filters → results) ─── */
+.search-route-crumb-wrap {
+  margin-bottom: 8px;
+}
+
+.search-route-crumb {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.search-route-crumb__link {
+  color: var(--c-accent, #0D9488);
+  font-weight: 600;
+  padding: 0;
+  background: transparent;
+}
+
+.search-route-crumb__link:hover {
+  text-decoration: underline;
+}
+
+.search-route-crumb__sep {
+  color: var(--c-muted, #94A3B8);
+}
+
+.search-route-crumb__current {
+  color: var(--c-sub, #64748B);
+  font-weight: 600;
+}
+
+.jobs-results-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 0 var(--pad-right) 0 var(--pad-left);
+  box-sizing: border-box;
+}
+
+@media (min-width: 768px) {
+  .jobs-results-toolbar {
+    padding: 0 40px;
+    margin-bottom: 20px;
+  }
+}
+
+.jobs-toolbar-btn {
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--c-surface, #fff);
+  color: var(--c-text, #0F172A);
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--c-border, #E2E8F0);
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.jobs-toolbar-btn:hover {
+  border-color: var(--c-accent, #0D9488);
+  color: var(--c-accent, #0D9488);
+}
+
+.jobs-sort-menu {
+  position: relative;
+}
+
+.jobs-sort-menu__dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  min-width: 160px;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--c-surface, #fff);
+  border: 1px solid var(--c-border, #E2E8F0);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+}
+
+.jobs-sort-menu__option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: transparent;
+  border: none;
+  color: var(--c-text, #0F172A);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.jobs-sort-menu__option:hover {
+  background: var(--c-accent-soft, #CCFBF1);
+}
+
+.jobs-sort-menu__option--active {
+  color: var(--c-accent, #0D9488);
+  background: var(--c-accent-soft, #CCFBF1);
+}
+
 /* ─── Jobs list ─── */
 .jobs-screen-header {
   width: 100%;
@@ -2355,5 +2465,419 @@ body,
 
 .sidebar-help-link:hover {
   color: var(--c-accent-hover, #0D9488);
+}
+
+/* ─── LinkedIn optimiser ─── */
+.linkedin-screen-header {
+  width: 100%;
+  padding: var(--safe-top) var(--pad-right) 14px var(--pad-left);
+  background: var(--c-surface, #FFFFFF);
+  border-bottom: 1px solid var(--c-border, #E2E8F0);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+  box-sizing: border-box;
+}
+
+@media (min-width: 768px) {
+  .linkedin-screen-header {
+    padding: 32px 40px 20px;
+    border-bottom: none;
+    box-shadow: none;
+    background: transparent;
+  }
+}
+
+.linkedin-screen-header__mobile {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.linkedin-screen-header__logout {
+  font-size: 12px;
+  color: var(--c-sub, #64748B);
+  font-weight: 600;
+  padding: 4px 0;
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.linkedin-pro-gate {
+  display: flex;
+  justify-content: center;
+  padding: 8px var(--pad-right) 48px var(--pad-left);
+  box-sizing: border-box;
+}
+
+@media (min-width: 768px) {
+  .linkedin-pro-gate {
+    padding: 24px 40px 48px;
+  }
+}
+
+.linkedin-pro-gate__list {
+  text-align: left;
+  margin: 0 0 20px;
+  padding-left: 20px;
+  font-size: 13px;
+  color: var(--c-sub, #64748B);
+  line-height: 1.65;
+}
+
+.linkedin-pro-gate__list li + li {
+  margin-top: 6px;
+}
+
+.linkedin-btn-inline {
+  width: auto !important;
+  flex: 1 1 auto;
+  min-width: min(100%, 140px);
+}
+
+.linkedin-section-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: stretch;
+}
+
+@media (max-width: 480px) {
+  .linkedin-section-actions {
+    flex-direction: column;
+  }
+
+  .linkedin-section-actions .linkedin-btn-inline {
+    width: 100% !important;
+    flex: none;
+  }
+}
+
+.linkedin-section-card__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.linkedin-section-card__title-wrap {
+  flex: 1;
+  min-width: 0;
+}
+
+.linkedin-section-card__score {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--c-text, #0F172A);
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.linkedin-section-card__bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  min-width: 0;
+}
+
+.linkedin-overall-card__inner {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.linkedin-overall-score {
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  flex-shrink: 0;
+  border: 4px solid var(--c-accent, #0F766E);
+}
+
+.linkedin-overall-score__value {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--c-text, #0F172A);
+  line-height: 1;
+}
+
+.linkedin-overall-score__label {
+  font-size: 10px;
+  color: var(--c-muted, #94A3B8);
+  font-weight: 600;
+}
+
+.linkedin-overall-card__meta {
+  flex: 1;
+  min-width: min(100%, 200px);
+}
+
+.linkedin-profile-textarea {
+  min-height: 120px;
+  max-width: 100%;
+}
+
+@media (max-width: 480px) {
+  .linkedin-overall-score {
+    width: 72px;
+    height: 72px;
+  }
+
+  .linkedin-overall-score__value {
+    font-size: 24px;
+  }
+
+  .linkedin-optimizer-layout {
+    padding-bottom: 32px;
+  }
+}
+
+.linkedin-screen-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.linkedin-optimizer-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 24px;
+  width: 100%;
+  padding: 8px var(--pad-right) 48px var(--pad-left);
+  box-sizing: border-box;
+}
+
+@media (min-width: 768px) {
+  .linkedin-optimizer-layout {
+    padding: 8px 40px 48px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .linkedin-optimizer-layout {
+    grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+    align-items: start;
+  }
+}
+
+.linkedin-optimizer-upload {
+  position: relative;
+}
+
+@media (min-width: 1024px) {
+  .linkedin-optimizer-upload {
+    position: sticky;
+    top: 24px;
+  }
+}
+
+.linkedin-bullet-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--c-sub, #64748B);
+  line-height: 1.55;
+}
+
+.linkedin-bullet-list li + li {
+  margin-top: 6px;
+}
+
+.linkedin-bullet-list--amber li::marker {
+  color: var(--c-amber, #D97706);
+}
+
+.linkedin-bullet-list--accent li::marker {
+  color: var(--c-accent, #0D9488);
+}
+
+.linkedin-priority-list {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 13px;
+  color: var(--c-text, #0F172A);
+  line-height: 1.55;
+}
+
+.linkedin-priority-list li + li {
+  margin-top: 8px;
+}
+
+.linkedin-section-card {
+  scroll-margin-top: 80px;
+}
+
+.linkedin-section-generate {
+  margin-top: 4px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border, #e8ecf0);
+}
+
+.linkedin-generated-content {
+  margin-top: 12px;
+  padding: 14px;
+  border-radius: 10px;
+  background: var(--bg, #f6f8fa);
+  border: 1px solid var(--border, #e8ecf0);
+}
+
+.linkedin-generated-content pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text, #1a1a2e);
+}
+
+/* Admin dashboard charts & tables */
+.admin-screen-header__toolbar {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .admin-screen-header__toolbar {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 20px;
+  }
+
+  .admin-screen-header__toolbar .page-title {
+    margin-bottom: 0;
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+.admin-header-refresh {
+  width: auto !important;
+  flex-shrink: 0;
+  white-space: nowrap;
+  align-self: flex-start;
+  padding: 10px 16px !important;
+}
+
+.admin-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+@media (min-width: 768px) {
+  .admin-kpi-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .admin-kpi-grid--3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .admin-kpi-grid--4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.admin-kpi-card {
+  min-height: 96px;
+}
+
+.admin-charts-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.admin-charts-grid--1 {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.admin-charts-grid--2 {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 900px) {
+  .admin-charts-grid--2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.admin-chart-card {
+  padding: 18px 18px 12px;
+  overflow: hidden;
+}
+
+.admin-chart-card__head h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--c-text, #0F172A);
+  letter-spacing: -0.02em;
+}
+
+.admin-chart-card__head p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--c-sub, #64748B);
+}
+
+.admin-chart-card__body {
+  margin-top: 12px;
+}
+
+.admin-chart-empty {
+  margin: 0;
+  padding: 24px 8px;
+  text-align: center;
+  color: var(--c-sub, #64748B);
+  font-size: 13px;
+}
+
+.admin-section-note {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: var(--c-sub, #64748B);
+  line-height: 1.5;
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-table th,
+.admin-table td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--c-border-light, #EEF2F6);
+  vertical-align: top;
+}
+
+.admin-table th {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--c-muted, #94A3B8);
+  background: var(--c-surface-muted, #F8FAFC);
+}
+
+.admin-table tbody tr:last-child td {
+  border-bottom: none;
 }
 

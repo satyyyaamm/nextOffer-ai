@@ -36,7 +36,11 @@ You only need to **create a Firebase project**, **paste keys**, and **deploy**. 
 |-----|-------|
 | **Anthropic** | [console.anthropic.com](https://console.anthropic.com/settings/keys) |
 | **RapidAPI (JSearch)** | [Subscribe free](https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch) → copy `X-RapidAPI-Key` |
+| **Jooble** (optional) | [jooble.org/api/about](https://jooble.org/api/about) → request API key |
+| **Adzuna** (optional) | [developer.adzuna.com](https://developer.adzuna.com/) → App ID + App Key |
 | **Razorpay** | **$5.99/week** or **$9.99/month** (display) — INR plans in Razorpay — see **[PAYMENTS.md](./PAYMENTS.md)** |
+
+JSearch is required. Jooble and Adzuna are optional — if omitted, search still works with JSearch only.
 
 ---
 
@@ -87,6 +91,21 @@ firebase functions:secrets:set RAZORPAY_PLAN_ID_WEEKLY
 firebase functions:secrets:set RAZORPAY_PLAN_ID_MONTHLY
 firebase functions:secrets:set RAZORPAY_WEBHOOK_SECRET
 ```
+
+Optional multi-source job APIs (non-secret params — add to `functions/.env.YOUR_PROJECT_ID`):
+
+```bash
+# Example: functions/.env.nextoffer-ai
+JOOBLE_API_KEY=your_jooble_key
+ADZUNA_APP_ID=your_adzuna_app_id
+ADZUNA_APP_KEY=your_adzuna_app_key
+ADMIN_EMAILS=you@example.com
+ADMIN_PASSWORD=your-secure-password
+```
+
+Redeploy after adding optional keys: `firebase deploy --only functions`
+
+**Admin dashboard** — set `ADMIN_EMAILS` and `ADMIN_PASSWORD` in the same env file, then redeploy functions. Open **`/admin`** (e.g. `https://nextoffer-ai.web.app/admin`) and sign in with email + password. This is separate from the normal Google sign-in flow.
 
 Install function dependencies and deploy:
 
@@ -139,7 +158,7 @@ Open http://localhost:3000
 Test flow:
 1. Sign in with Google
 2. Paste resume → Parse
-3. Set filters → Search (real JSearch jobs)
+3. Set filters → Search (JSearch + Jooble + Adzuna in parallel, deduped & ranked by resume match)
 4. Generate documents → Copy
 5. Upgrade with Razorpay test card `4111 1111 1111 1111`
 
@@ -180,9 +199,10 @@ Your app is live at `https://YOUR_PROJECT.web.app`
 |-------|-----|
 | Google login fails | Add domain to Firebase Auth authorized domains |
 | "Job search unavailable" | Check `RAPIDAPI_KEY` secret; verify JSearch subscription |
+| Only JSearch results | Add `JOOBLE_API_KEY`, `ADZUNA_APP_ID`, `ADZUNA_APP_KEY` to `functions/.env.*` and redeploy |
 | Checkout fails | Verify Razorpay keys + Plan IDs — see PAYMENTS.md |
 | Pro not unlocking | Check webhook URL + `RAZORPAY_WEBHOOK_SECRET`; payment verify runs on success |
-| Functions timeout | JSearch + AI ranking can take 30–60s — already set to 120s |
+| Functions timeout | Multi-source search + scoring can take 30–60s — already set to 120s |
 
 ---
 
@@ -196,7 +216,8 @@ files/
 │   ├── firebase.js            # Firebase client init
 │   └── theme.js               # Design tokens
 ├── functions/
-│   └── index.js               # Secure backend (AI, JSearch, Razorpay)
+│   ├── index.js               # Secure backend (AI, job search, Razorpay)
+│   └── jobs/                  # Multi-source pipeline (JSearch, Jooble, Adzuna)
 ├── firestore.rules            # Deny all client DB access
 ├── firebase.json              # Hosting + functions config
 ├── .env.local.example         # Frontend env template

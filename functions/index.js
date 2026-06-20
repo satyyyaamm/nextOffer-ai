@@ -3,6 +3,7 @@
  *
  * Secrets (firebase functions:secrets:set …):
  *   ANTHROPIC_API_KEY, RAPIDAPI_KEY
+ *   JOOBLE_API_KEY (optional), ADZUNA_APP_ID, ADZUNA_APP_KEY (optional)
  *   RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET
  *   RAZORPAY_PLAN_ID_WEEKLY, RAZORPAY_PLAN_ID_MONTHLY
  *   GA4_API_SECRET (optional — server purchase_success events)
@@ -29,6 +30,26 @@ const rzPlanIdWeekly = defineSecret("RAZORPAY_PLAN_ID_WEEKLY");
 const rzPlanIdMonthly = defineSecret("RAZORPAY_PLAN_ID_MONTHLY");
 const ga4MeasurementId = defineString("GA4_MEASUREMENT_ID", { default: "" });
 const ga4ApiSecret = defineSecret("GA4_API_SECRET");
+const joobleApiKey = defineString("JOOBLE_API_KEY", { default: "" });
+const adzunaAppId = defineString("ADZUNA_APP_ID", { default: "" });
+const adzunaAppKey = defineString("ADZUNA_APP_KEY", { default: "" });
+const adminEmails = defineString("ADMIN_EMAILS", { default: "" });
+const adminPassword = defineString("ADMIN_PASSWORD", { default: "" });
+
+const { runMultiSourceSearch } = require("./jobs/pipeline");
+const { runLinkedInAnalysis, generateLinkedInSectionContent, GENERATABLE_SECTION_IDS } = require("./linkedinOptimizer");
+const { logAiUsage } = require("./admin/aiLogger");
+const { isAdminRequest } = require("./admin/auth");
+const {
+  validateAdminCredentials,
+  createAdminSession,
+  revokeAdminSession,
+  requireAdminSession,
+  stripSessionToken,
+} = require("./admin/sessionAuth");
+const { buildAdminDashboard, listUsers } = require("./admin/metrics");
+const { scoreJobsForProfile, applyExperienceLevelFilter, applySourceFilter } = require("./jobs/matchScore");
+const { rankJobs } = require("./jobs/rank");
 
 const RZ_API = "https://api.razorpay.com/v1";
 /** Billing cycles — high count so subscription runs until customer cancels. */
@@ -86,7 +107,9 @@ function sanitizeText(text, maxLen) {
 }
 
 async function extractResumeText(data) {
-  const pdfBase64 = data?.resumePdfBase64;
+  const pdfBase64 = data?.resumePdfBase64 || data?.linkedinPdfBase64;
+  const isLinkedInExport = Boolean(data?.linkedinPdfBase64);
+  const linkedinText = sanitizeText(data?.linkedinProfileText, MAX_RESUME_CHARS);
 
   if (pdfBase64) {
     let buffer;
@@ -110,20 +133,40 @@ async function extractResumeText(data) {
       if (text.length < 50) {
         throw new HttpsError(
           "invalid-argument",
-          "Could not read enough text from this PDF. Try a text-based PDF or paste your resume instead."
+          isLinkedInExport
+            ? "Could not read enough text from this LinkedIn PDF. Export from LinkedIn (More → Save to PDF) and try again."
+            : "Could not read enough text from this PDF. Try a text-based PDF or paste your resume instead."
         );
       }
-      return { text, source: "pdf", fileName: data?.fileName || "resume.pdf" };
+      return {
+        text,
+        source: "pdf",
+        fileName: data?.fileName || (isLinkedInExport ? "linkedin.pdf" : "resume.pdf"),
+      };
     } catch (err) {
       if (err instanceof HttpsError) throw err;
       console.error("PDF parse error:", err.message);
-      throw new HttpsError("invalid-argument", "Could not read this PDF. Use a standard resume PDF or paste text.");
+      throw new HttpsError(
+        "invalid-argument",
+        isLinkedInExport
+          ? "Could not read this LinkedIn PDF. Use LinkedIn's Save to PDF export."
+          : "Could not read this PDF. Use a standard resume PDF or paste text."
+      );
     }
+  }
+
+  if (isLinkedInExport && linkedinText.length >= 50) {
+    return { text: linkedinText, source: "text", fileName: data?.fileName || "linkedin-profile.txt" };
   }
 
   const text = sanitizeText(data?.resumeText, MAX_RESUME_CHARS);
   if (text.length < 50) {
-    throw new HttpsError("invalid-argument", "Please paste at least 50 characters or upload a PDF resume.");
+    throw new HttpsError(
+      "invalid-argument",
+      isLinkedInExport
+        ? "Please upload a LinkedIn PDF export or paste your profile text (at least 50 characters)."
+        : "Please paste at least 50 characters or upload a PDF resume."
+    );
   }
   return { text, source: "text", fileName: null };
 }
@@ -156,12 +199,42 @@ function anthropicErrorToHttps(err) {
   return new HttpsError("internal", `AI processing failed: ${apiMsg}`);
 }
 
-async function createAnthropicMessage(anthropic, params) {
+async function createAnthropicMessage(anthropic, params, meta = {}) {
   try {
-    return await anthropic.messages.create(params);
+    const response = await anthropic.messages.create(params);
+    if (meta?.action) {
+      logAiUsage(meta.userId, meta.action, response.usage).catch((err) => {
+        console.warn("AI usage log failed:", err.message);
+      });
+    }
+    return response;
   } catch (err) {
     throw anthropicErrorToHttps(err);
   }
+}
+
+async function recordBillingEvent(userId, event) {
+  const patch = {
+    "billing.lastCheckoutAt": admin.firestore.FieldValue.serverTimestamp(),
+    "billing.lastCheckoutPlan": event.plan || null,
+    "billing.lastCheckoutStatus": event.status,
+    "billing.lastSubscriptionId": event.subscriptionId || null,
+  };
+  if (event.status === "started") {
+    patch["billing.checkoutAttempts"] = admin.firestore.FieldValue.increment(1);
+  }
+  await db.collection("users").doc(userId).set(patch, { merge: true });
+  await db
+    .collection("users")
+    .doc(userId)
+    .collection("billingEvents")
+    .add({
+      type: event.status,
+      plan: event.plan || null,
+      subscriptionId: event.subscriptionId || null,
+      note: event.note || null,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
 }
 
 async function getUser(userId) {
@@ -218,6 +291,7 @@ async function ensureUserExists(request) {
         complete: false,
         lastReset: admin.firestore.Timestamp.now(),
       },
+      linkedinAnalysis: { count: 0, lastReset: admin.firestore.Timestamp.now() },
     };
     await ref.set(newUser);
     const created = await ref.get();
@@ -226,6 +300,15 @@ async function ensureUserExists(request) {
 
   const userData = { id: userId, ...doc.data() };
   return hydrateParsedProfileFromResumes(userId, userData);
+}
+
+function requireProTier(user, featureName = "This feature") {
+  if (user.tier !== "pro") {
+    throw new HttpsError(
+      "failed-precondition",
+      `PRO_ONLY:linkedin: ${featureName} is available on Pro only. Upgrade to unlock.`
+    );
+  }
 }
 
 function resetMonthlyCounter(counter) {
@@ -290,7 +373,7 @@ async function deleteCollectionDocs(collectionRef, batchSize = 400) {
 
 async function deleteAllUserFirestoreData(userId) {
   const userRef = db.collection("users").doc(userId);
-  for (const sub of ["resumes", "jobKits", "documents"]) {
+  for (const sub of ["resumes", "jobKits", "documents", "linkedinAnalyses"]) {
     await deleteCollectionDocs(userRef.collection(sub));
   }
   const searchHistoryRef = db.collection("searches").doc(userId).collection("history");
@@ -909,6 +992,7 @@ function mapJSearchJob(job, index, region) {
     salary_max,
     salary_unit: salary_unit || "k",
     source: job.job_publisher || "Job Board",
+    provider: "jsearch",
     posted: formatPosted(job.job_posted_at_datetime_utc),
     posted_at: job.job_posted_at_datetime_utc || null,
     match_score: 0,
@@ -1165,7 +1249,12 @@ async function fetchJSearchJobs(profile, filters, apiKey, options = {}) {
 }
 
 function basicMatchScore(job, profile) {
-  const skills = (profile.skills || []).map((s) => String(s).toLowerCase());
+  const skills = [
+    ...(profile.skills || []),
+    ...(profile.technologies || []),
+    ...(profile.frameworks || []),
+    ...(profile.programming_languages || []),
+  ].map((s) => String(s).toLowerCase());
   const text = `${job.title} ${job.description}`.toLowerCase();
   const titleWords = (profile.title || "").toLowerCase().split(/\s+/).filter((w) => w.length > 2);
   let hits = 0;
@@ -1178,27 +1267,41 @@ function basicMatchScore(job, profile) {
   return Math.min(92, 35 + hits * 10);
 }
 
-async function scoreJobBatchWithAI(batch, profile, isFree, apiKey, indexOffset) {
+async function scoreJobBatchWithAI(batch, profile, apiKey, userId) {
   const anthropic = getAnthropic(apiKey);
   const jobSummaries = batch.map((j, i) => ({
     index: i,
     title: j.title,
     company: j.company,
-    description: j.description?.slice(0, 200),
+    description: j.description?.slice(0, 400),
   }));
 
-  const response = await createAnthropicMessage(anthropic, {
-    model: MODEL,
-    max_tokens: 1200,
-    system:
-      "You rank job matches. Return ONLY valid JSON array: [{\"index\":0,\"match_score\":85}] with one entry per job index and match_score 0-100.",
-    messages: [
-      {
-        role: "user",
-        content: `Candidate: ${profile.title}, skills: ${(profile.skills || []).join(", ")}, ${profile.experience_years || 0} years exp.\nJobs:\n${JSON.stringify(jobSummaries)}`,
-      },
-    ],
-  });
+  const profileSkills = [
+    ...(profile.skills || []),
+    ...(profile.technologies || []),
+    ...(profile.frameworks || []),
+    ...(profile.programming_languages || []),
+  ]
+    .filter(Boolean)
+    .slice(0, 20)
+    .join(", ");
+
+  const response = await createAnthropicMessage(
+    anthropic,
+    {
+      model: MODEL,
+      max_tokens: 1200,
+      system:
+        "You rank job matches. Return ONLY valid JSON array: [{\"index\":0,\"match_score\":85}] with one entry per job index and match_score 0-100. Score generously when skills and title align; 70+ means reasonable fit, 85+ strong fit.",
+      messages: [
+        {
+          role: "user",
+          content: `Candidate: ${profile.title}, ${profile.experience_years || 0} years, seniority: ${profile.seniority || "unknown"}. Skills: ${profileSkills || "not listed"}.\nJobs:\n${JSON.stringify(jobSummaries)}`,
+        },
+      ],
+    },
+    { action: "scoreJobs", userId }
+  );
 
   const text = response.content[0].text.replace(/```json|```/g, "").trim();
   const jsonSlice = text.match(/\[[\s\S]*\]/)?.[0] || text;
@@ -1217,7 +1320,7 @@ async function scoreJobBatchWithAI(batch, profile, isFree, apiKey, indexOffset) 
 }
 
 /** Score every job returned (batched AI calls). Never truncate the list. */
-async function scoreJobsWithAI(jobs, profile, isFree, apiKey) {
+async function scoreJobsWithAI(jobs, profile, isFree, apiKey, userId) {
   if (jobs.length === 0) return [];
 
   const scored = jobs.map((j) => ({ ...j, match_score: basicMatchScore(j, profile) }));
@@ -1226,7 +1329,7 @@ async function scoreJobsWithAI(jobs, profile, isFree, apiKey) {
   for (let start = 0; start < Math.min(jobs.length, maxAiJobs); start += AI_SCORE_BATCH_SIZE) {
     const batch = jobs.slice(start, start + AI_SCORE_BATCH_SIZE);
     try {
-      const aiScored = await scoreJobBatchWithAI(batch, profile, isFree, apiKey, start);
+      const aiScored = await scoreJobBatchWithAI(batch, profile, apiKey, userId);
       aiScored.forEach((job, i) => {
         scored[start + i] = job;
       });
@@ -1239,8 +1342,17 @@ async function scoreJobsWithAI(jobs, profile, isFree, apiKey) {
 }
 
 function parseJsonFromAI(text) {
-  const clean = text.replace(/```json|```/g, "").trim();
-  return JSON.parse(clean);
+  const clean = String(text || "").replace(/```json|```/g, "").trim();
+  try {
+    return JSON.parse(clean);
+  } catch {
+    const start = clean.indexOf("{");
+    const end = clean.lastIndexOf("}");
+    if (start >= 0 && end > start) {
+      return JSON.parse(clean.slice(start, end + 1));
+    }
+    throw new Error("Invalid JSON from AI");
+  }
 }
 
 function verifyRazorpayWebhookSignature(rawBody, signatureHeader, secret) {
@@ -1401,17 +1513,24 @@ exports.parseResume = onCall(
 
     const anthropic = getAnthropic(anthropicApiKey.value());
 
-    const response = await createAnthropicMessage(anthropic, {
-      model: MODEL,
-      max_tokens: 800,
-      system:
-        'Parse resumes. Return ONLY JSON: {"name":"string","title":"string","experience_years":number,"skills":["skill1"],"summary":"string","top_strength":"string","email":"string or empty","phone":"string or empty","location":"string or empty","linkedin":"url or empty","github":"url or empty","portfolio":"url or empty","website":"url or empty"}. Extract contact links and location from the resume when present; use empty string if missing.',
-      messages: [{ role: "user", content: `Parse this resume:\n"""${resumeText}"""` }],
-    });
+    const response = await createAnthropicMessage(
+      anthropic,
+      {
+        model: MODEL,
+        max_tokens: 800,
+        system:
+          'Parse resumes. Return ONLY JSON: {"name":"string","title":"string","job_titles":["string"],"experience_years":number,"seniority":"Junior|Mid-Level|Senior|Lead|string","skills":["skill1"],"technologies":["tech"],"frameworks":["framework"],"programming_languages":["lang"],"industry":"string or empty","location_preference":"string or empty","summary":"string","top_strength":"string","email":"string or empty","phone":"string or empty","location":"string or empty","linkedin":"url or empty","github":"url or empty","portfolio":"url or empty","website":"url or empty"}. Extract job titles, skills, tech stack, seniority, industry, and location preferences. Use empty string or empty array when missing.',
+        messages: [{ role: "user", content: `Parse this resume:\n"""${resumeText}"""` }],
+      },
+      { action: "parseResume", userId }
+    );
 
     let parsed;
     try {
       parsed = parseJsonFromAI(response.content[0].text);
+      if (!parsed.job_titles?.length && parsed.title) {
+        parsed.job_titles = [parsed.title];
+      }
     } catch {
       throw new HttpsError("internal", "Could not parse resume. Please try again.");
     }
@@ -1504,8 +1623,43 @@ exports.searchJobs = onCall(
       datePostedEffective,
       datePostedNotice,
       jsearchStats,
-    } = await fetchJSearchJobs(profile, enrichedFilters, rapidApiKey.value(), fetchOpts);
-    const jobs = await scoreJobsWithAI(rawJobs, profile, isFree, anthropicApiKey.value());
+      searchStats,
+    } = isLoadMore
+      ? await fetchJSearchJobs(profile, enrichedFilters, rapidApiKey.value(), fetchOpts).then((r) => ({
+          ...r,
+          searchStats: r.jsearchStats
+            ? { ...r.jsearchStats, byProvider: { jsearch: r.jobs?.length || 0, jooble: 0, adzuna: 0 } }
+            : null,
+        }))
+      : await runMultiSourceSearch({
+          profile,
+          filters: enrichedFilters,
+          userId,
+          db,
+          fetchJSearchJobs,
+          keys: {
+            rapidApiKey: rapidApiKey.value(),
+            joobleApiKey: joobleApiKey.value(),
+            adzunaAppId: adzunaAppId.value(),
+            adzunaAppKey: adzunaAppKey.value(),
+          },
+          options: fetchOpts,
+        });
+
+    let jobs = isLoadMore
+      ? scoreJobsForProfile(
+          applyExperienceLevelFilter(
+            applySourceFilter(rawJobs || [], enrichedFilters.sources),
+            enrichedFilters.experienceLevel
+          ),
+          profile,
+          enrichedFilters
+        )
+      : rawJobs || [];
+
+    if (jobs.length > 0) {
+      jobs = await scoreJobsWithAI(jobs, profile, isFree, anthropicApiKey.value(), userId);
+    }
     const hasResults = jobs.length >= MIN_JOBS_TO_COUNT_FREE_SEARCH;
 
     // Free search counts only when the user gets job listings back.
@@ -1542,7 +1696,7 @@ exports.searchJobs = onCall(
         jobCount: jobs.length,
         filters: enrichedFilters,
         timestamp: admin.firestore.FieldValue.serverTimestamp(),
-        source: "jsearch",
+        source: "multi_source",
       });
 
       await db.collection("users").doc(userId).update({
@@ -1584,6 +1738,7 @@ exports.searchJobs = onCall(
       datePostedEffective,
       datePostedNotice: datePostedNotice || null,
       jsearchStats: jsearchStats || null,
+      searchStats: searchStats || null,
     };
   }
 );
@@ -1634,12 +1789,16 @@ exports.generateDocument = onCall(
 
     const anthropic = getAnthropic(anthropicApiKey.value());
 
-    const response = await createAnthropicMessage(anthropic, {
-      model: MODEL,
-      max_tokens: promptSpec.maxTokens,
-      system: promptSpec.system,
-      messages: [{ role: "user", content: promptSpec.user }],
-    });
+    const response = await createAnthropicMessage(
+      anthropic,
+      {
+        model: MODEL,
+        max_tokens: promptSpec.maxTokens,
+        system: promptSpec.system,
+        messages: [{ role: "user", content: promptSpec.user }],
+      },
+      { action: `generateDocument:${documentType}`, userId }
+    );
 
     let content = response.content[0].text;
     if (documentType === "resume") {
@@ -1784,6 +1943,12 @@ exports.createCheckoutSession = onCall(CHECKOUT_OPTS, async (request) => {
       planKey,
     });
 
+    await recordBillingEvent(userId, {
+      status: "started",
+      plan: planKey,
+      subscriptionId: subscription.id,
+    });
+
     const isWeekly = planKey === "weekly";
     return {
       keyId,
@@ -1826,6 +1991,11 @@ exports.verifyRazorpaySubscription = onCall(
 
     const planKey = String(plan || "monthly").toLowerCase();
     await setUserPro(userId, subscriptionId, planKey);
+    await recordBillingEvent(userId, {
+      status: "completed",
+      plan: planKey,
+      subscriptionId,
+    });
 
     const isWeekly = planKey === "weekly" || planKey === "week";
     await sendGa4Event({
@@ -1979,6 +2149,257 @@ exports.logClientError = onCall(BASE_OPTS, async (request) => {
 });
 
 // ─── Callable: Delete user data (resume or full account) ─────────────────────
+
+exports.analyzeLinkedIn = onCall({ ...AI_OPTS, timeoutSeconds: 120 }, async (request) => {
+    const user = await ensureUserExists(request);
+    const userId = user.id;
+
+    requireProTier(user, "LinkedIn optimiser");
+
+    if (!request.data?.linkedinPdfBase64 && !request.data?.linkedinProfileText) {
+      throw new HttpsError("invalid-argument", "Upload a LinkedIn profile PDF export or paste profile text.");
+    }
+
+    await checkRateLimit(userId, "analyzeLinkedIn");
+
+    const { text, fileName } = await extractResumeText(request.data || {});
+    if (text.length < 80) {
+      console.warn(`LinkedIn analysis: short extract (${text.length} chars) for user ${userId}`);
+    }
+    const anthropic = getAnthropic(anthropicApiKey.value());
+
+    let analysis;
+    try {
+      const result = await runLinkedInAnalysis(
+        (params) =>
+          createAnthropicMessage(anthropic, { model: MODEL, ...params }, { action: "analyzeLinkedIn", userId }),
+        text
+      );
+      analysis = result.analysis;
+    } catch (err) {
+      console.error("LinkedIn analysis failed:", err.message, {
+        textLength: text.length,
+        stopReason: err.stopReason,
+      });
+      if (err instanceof HttpsError) throw err;
+      throw new HttpsError(
+        "internal",
+        "Could not analyse LinkedIn profile. Try pasting profile text instead of PDF, or try again in a minute."
+      );
+    }
+
+    const analyzedAt = admin.firestore.FieldValue.serverTimestamp();
+    const docRef = await db.collection("users").doc(userId).collection("linkedinAnalyses").add({
+      analysis,
+      profileText: text.slice(0, MAX_RESUME_CHARS),
+      fileName: fileName || request.data?.fileName || "linkedin.pdf",
+      analyzedAt,
+      textLength: text.length,
+      sectionGenerations: {},
+    });
+
+    const profileUpdate = {
+      latestLinkedInAnalysisId: docRef.id,
+      linkedinAnalysisUpdatedAt: analyzedAt,
+    };
+
+    await db.collection("users").doc(userId).update(profileUpdate);
+
+    return {
+      success: true,
+      analysis,
+      analysisId: docRef.id,
+      fileName: fileName || request.data?.fileName || "linkedin.pdf",
+      analyzedAt: new Date().toISOString(),
+    };
+});
+
+exports.getLinkedInAnalysis = onCall(BASE_OPTS, async (request) => {
+  const user = await ensureUserExists(request);
+  requireProTier(user, "LinkedIn optimiser");
+  const userId = user.id;
+
+  if (user.latestLinkedInAnalysisId) {
+    const doc = await db
+      .collection("users")
+      .doc(userId)
+      .collection("linkedinAnalyses")
+      .doc(user.latestLinkedInAnalysisId)
+      .get();
+    if (doc.exists) {
+      const data = doc.data();
+      const ts = data.analyzedAt?.toDate?.();
+      return {
+        analysis: data.analysis,
+        fileName: data.fileName || "",
+        analyzedAt: ts ? ts.toISOString() : null,
+        analysisId: doc.id,
+        sectionGenerations: serializeLinkedInSectionGenerations(data.sectionGenerations),
+        hasProfileText: Boolean(data.profileText && data.profileText.length >= 50),
+      };
+    }
+  }
+
+  const snap = await db
+    .collection("users")
+    .doc(userId)
+    .collection("linkedinAnalyses")
+    .limit(20)
+    .get();
+
+  if (snap.empty) {
+    return { analysis: null };
+  }
+
+  const docs = snap.docs
+    .map((doc) => ({ doc, data: doc.data() }))
+    .sort((a, b) => {
+      const ta = a.data.analyzedAt?.toMillis?.() || 0;
+      const tb = b.data.analyzedAt?.toMillis?.() || 0;
+      return tb - ta;
+    });
+
+  const doc = docs[0].doc;
+  const data = docs[0].data;
+  const ts = data.analyzedAt?.toDate?.();
+  return {
+    analysis: data.analysis,
+    fileName: data.fileName || "",
+    analyzedAt: ts ? ts.toISOString() : null,
+    analysisId: doc.id,
+    sectionGenerations: serializeLinkedInSectionGenerations(data.sectionGenerations),
+    hasProfileText: Boolean(data.profileText && data.profileText.length >= 50),
+  };
+});
+
+function serializeLinkedInSectionGenerations(raw) {
+  if (!raw || typeof raw !== "object") return {};
+  const out = {};
+  for (const [sectionId, entry] of Object.entries(raw)) {
+    if (!entry?.content) continue;
+    const ts = entry.generatedAt?.toDate?.();
+    out[sectionId] = {
+      content: String(entry.content),
+      generatedAt: ts ? ts.toISOString() : null,
+    };
+  }
+  return out;
+}
+
+exports.generateLinkedInSection = onCall({ ...AI_OPTS, timeoutSeconds: 90 }, async (request) => {
+  const user = await ensureUserExists(request);
+  requireProTier(user, "LinkedIn optimiser");
+  const userId = user.id;
+  const { analysisId, sectionId } = request.data || {};
+
+  if (!analysisId || !sectionId) {
+    throw new HttpsError("invalid-argument", "Missing analysis or section.");
+  }
+  if (!GENERATABLE_SECTION_IDS.includes(sectionId)) {
+    throw new HttpsError("invalid-argument", "This section does not support content generation.");
+  }
+
+  const analysisRef = db.collection("users").doc(userId).collection("linkedinAnalyses").doc(analysisId);
+  const analysisDoc = await analysisRef.get();
+  if (!analysisDoc.exists) {
+    throw new HttpsError("not-found", "LinkedIn analysis not found. Run a new analysis first.");
+  }
+
+  const analysisData = analysisDoc.data();
+  const section = (analysisData.analysis?.sections || []).find((s) => s.id === sectionId);
+  if (!section) {
+    throw new HttpsError("not-found", "Section not found in this analysis.");
+  }
+
+  await checkRateLimit(userId, "generateLinkedInSection");
+
+  let profileText = sanitizeText(analysisData.profileText, MAX_GENERATION_RESUME_CHARS);
+  if (profileText.length < 50) {
+    profileText = sanitizeText(await resolveResumeTextForUser(userId, user), MAX_GENERATION_RESUME_CHARS);
+  }
+
+  const parsedProfile = user.parsedProfile || null;
+  const anthropic = getAnthropic(anthropicApiKey.value());
+
+  let content;
+  try {
+    content = await generateLinkedInSectionContent(
+      (params) =>
+        createAnthropicMessage(anthropic, { model: MODEL, ...params }, {
+          action: "generateLinkedInSection",
+          userId,
+        }),
+      { sectionId, section, profileText, parsedProfile }
+    );
+  } catch (err) {
+    console.error("LinkedIn section generation failed:", err.message, { sectionId, userId });
+    if (err instanceof HttpsError) throw err;
+    throw new HttpsError("internal", "Could not generate content for this section. Please try again.");
+  }
+
+  const generatedAt = admin.firestore.FieldValue.serverTimestamp();
+  await analysisRef.update({
+    [`sectionGenerations.${sectionId}`]: { content, generatedAt },
+  });
+
+  return {
+    success: true,
+    sectionId,
+    content,
+    generatedAt: new Date().toISOString(),
+    usedProfileText: profileText.length >= 50,
+  };
+});
+
+exports.recordCheckoutOutcome = onCall(BASE_OPTS, async (request) => {
+  const userId = requireAuth(request);
+  const { status, plan, subscriptionId, note } = request.data || {};
+  const allowed = ["dismissed", "failed"];
+  if (!allowed.includes(status)) {
+    throw new HttpsError("invalid-argument", "Invalid checkout status.");
+  }
+  await recordBillingEvent(userId, {
+    status,
+    plan: plan || null,
+    subscriptionId: subscriptionId || null,
+    note: note ? String(note).slice(0, 200) : null,
+  });
+  return { success: true };
+});
+
+exports.adminLogin = onCall(BASE_OPTS, async (request) => {
+  const { email, password } = request.data || {};
+  if (!validateAdminCredentials(email, password, adminEmails.value(), adminPassword.value())) {
+    throw new HttpsError("permission-denied", "Invalid email or password.");
+  }
+  const session = await createAdminSession(email);
+  return { success: true, ...session };
+});
+
+exports.adminLogout = onCall(BASE_OPTS, async (request) => {
+  await revokeAdminSession(request.data?.sessionToken);
+  return { success: true };
+});
+
+exports.getAdminAccess = onCall(BASE_OPTS, async (request) => {
+  if (!request.auth) {
+    return { isAdmin: false };
+  }
+  return { isAdmin: isAdminRequest(request, adminEmails.value()) };
+});
+
+exports.getAdminDashboard = onCall({ ...BASE_OPTS, timeoutSeconds: 120 }, async (request) => {
+  await requireAdminSession(request, adminEmails.value());
+  const dashboard = await buildAdminDashboard();
+  return { success: true, dashboard };
+});
+
+exports.listAdminUsers = onCall(BASE_OPTS, async (request) => {
+  await requireAdminSession(request, adminEmails.value());
+  const { limit, startAfterId } = stripSessionToken(request.data);
+  const result = await listUsers({ limit, startAfterId });
+  return { success: true, ...result };
+});
 
 exports.deleteUserData = onCall({ ...BASE_OPTS, timeoutSeconds: 120 }, async (request) => {
   const userId = requireAuth(request);

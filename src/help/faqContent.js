@@ -48,7 +48,7 @@ export const FAQ_ITEMS = [
     category: "getting_started",
     question: "How do I move between screens?",
     answer:
-      "Use the left sidebar (or mobile menu): Upload resume → Search jobs → Job results → Application kit. Job detail opens when you tap a listing; use Back to return to results. Screens unlock as you progress — for example, Job results appears after your first search.",
+      "Use the left sidebar (or mobile menu): Upload resume → Search jobs → Application kit. Search jobs has two steps: set filters, then view results after you search. Job detail opens when you tap a listing.",
     keywords: ["navigation", "sidebar", "menu", "screens"],
     tags: ["getting_started"],
   },
@@ -120,7 +120,7 @@ export const FAQ_ITEMS = [
     category: "job_search",
     question: "Can I load more job listings?",
     answer:
-      "Yes. On Job results, use Load more jobs to fetch additional listings from the same search. Your original filters stay the same until you run a new search from Search jobs.",
+      "Yes. On Search jobs, use Load more jobs to fetch additional listings from the same search. Your original filters stay the same until you run a new search.",
     keywords: ["pagination", "more jobs", "load more"],
     tags: ["jobs"],
   },
@@ -129,7 +129,7 @@ export const FAQ_ITEMS = [
     category: "application_kit",
     question: "How do I generate an application kit?",
     answer:
-      "Open a job from Job results, then tap Generate on the job detail screen. We create three documents tailored to that role: resume, cover letter, and cold email. Generation takes a short moment. Saved kits appear in Application kit in the sidebar.",
+      "Open a job from Search jobs, then tap Generate on the job detail screen. We create three documents tailored to that role: resume, cover letter, and cold email. Generation takes a short moment. Saved kits appear in Application kit in the sidebar.",
     keywords: ["generate", "create", "documents", "ats"],
     tags: ["kit", "detail", "getting_started"],
   },
@@ -324,7 +324,7 @@ export function getSuggestedFaq(context, limit = 4) {
       addTags(["filters"], 4);
       if (!isPro) addTags(["free_limit"], 3);
     }
-    if (screen === "jobs" || screen === "detail") addTags(["jobs", "detail"], 3);
+    if (screen === "filters" || screen === "jobs" || screen === "detail") addTags(["jobs", "detail"], 3);
     if (screen === "kit") addTags(["kit"], 4);
     if (!hasResume) addTags(["resume"], 2);
     if (!isPro) addTags(["free_limit", "pro"], 2);

@@ -110,12 +110,37 @@ export function IconChat({ size = 18, color = "currentColor" }) {
   );
 }
 
+export function IconLinkedIn({ size = 18, color = "currentColor" }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="2" y="2" width="20" height="20" rx="4" stroke={color} strokeWidth="1.75" />
+      <path
+        d="M7 10v7M7 7v.01M11 17v-4.2c0-1.2.9-2.2 2.1-2.2 1.1 0 1.9.8 1.9 1.9V17M11 10v7"
+        stroke={color}
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function IconHelp({ size = 18, color = "currentColor" }) {
   return (
     <svg {...iconProps(size)} style={{ color }}>
       <circle cx="12" cy="12" r="10" />
       <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
       <line x1="12" y1="17" x2="12.01" y2="17" />
+    </svg>
+  );
+}
+
+export function IconBarChart({ size = 18, color = "currentColor" }) {
+  return (
+    <svg {...iconProps(size)} style={{ color }}>
+      <line x1="12" y1="20" x2="12" y2="10" />
+      <line x1="18" y1="20" x2="18" y2="4" />
+      <line x1="6" y1="20" x2="6" y2="14" />
     </svg>
   );
 }

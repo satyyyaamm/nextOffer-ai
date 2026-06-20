@@ -1,12 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { C, font, cardStyle } from "./theme";
 import { AppLogo } from "./brand";
-import { IconLock, IconShield, IconCreditCard, IconCheck, IconUpload, IconSearch, IconBuilding, IconExternalLink, IconMenu, IconX } from "./icons";
+import { IconLock, IconShield, IconCreditCard, IconCheck, IconUpload, IconSearch, IconBuilding, IconExternalLink, IconMenu, IconX, IconLinkedIn } from "./icons";
 import { setAnalyticsConsent, shouldShowConsentBanner, subscribeAnalyticsConsent } from "./consent";
 import { initAnalyticsAfterConsent } from "./analytics";
 import { useHelpFaq } from "./help/HelpFaqContext";
 
-const MobileNavContext = createContext(null);
+export const MobileNavContext = createContext(null);
 
 export function useMobileNav() {
   return useContext(MobileNavContext);
@@ -337,12 +337,13 @@ export function BenefitList({ plain = false }) {
 const STEPS = [
   { id: "resume", label: "Upload" },
   { id: "filters", label: "Search" },
-  { id: "jobs", label: "Apply" },
 ];
 
 export function StepProgress({ current }) {
-  const idx = STEPS.findIndex((s) => s.id === current || (current === "detail" && s.id === "jobs"));
-  const activeIdx = current === "detail" ? 2 : idx >= 0 ? idx : 0;
+  const idx = STEPS.findIndex(
+    (s) => s.id === current || current === "detail" || current === "jobs"
+  );
+  const activeIdx = idx >= 0 ? idx : 0;
 
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 0, marginBottom: 20 }}>
@@ -771,7 +772,7 @@ export const PageMain = ({ children, variant = "default", className = "", enter 
 const SIDEBAR_NAV = [
   { id: "resume", label: "Upload resume", icon: IconUpload },
   { id: "filters", label: "Search jobs", icon: IconSearch },
-  { id: "jobs", label: "Job results", icon: IconBuilding },
+  { id: "linkedin", label: "LinkedIn optimiser", icon: IconLinkedIn },
   { id: "kit", label: "Application kit", icon: IconCheck },
 ];
 
@@ -782,20 +783,19 @@ export function AppSidebar({
   onClose,
   onOpenDataPrivacy,
   hasProfile,
-  hasJobs,
   isPro,
   userEmail,
   kitCount = 0,
   variant = "desktop",
 }) {
   const { open: openHelp } = useHelpFaq();
-  const activeScreen = screen === "detail" ? "jobs" : screen;
+  const activeScreen = screen === "detail" || screen === "jobs" ? "filters" : screen;
   const isDrawer = variant === "mobile";
 
   const canNav = (id) => {
     if (id === "resume") return true;
+    if (id === "linkedin") return true;
     if (id === "filters") return hasProfile;
-    if (id === "jobs") return hasJobs;
     if (id === "kit") return hasProfile;
     return false;
   };
@@ -844,6 +844,21 @@ export function AppSidebar({
             >
               <Icon size={18} color={active ? C.accent : C.sub} />
               {label}
+              {id === "linkedin" && !isPro && (
+                <span
+                  style={{
+                    marginLeft: "auto",
+                    fontSize: 10,
+                    fontWeight: 700,
+                    background: C.accentSoft,
+                    color: C.accent,
+                    padding: "2px 8px",
+                    borderRadius: 100,
+                  }}
+                >
+                  Pro
+                </span>
+              )}
               {id === "kit" && kitCount > 0 && (
                 <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, background: C.accentSoft, color: C.accent, padding: "2px 8px", borderRadius: 100 }}>
                   {kitCount}
@@ -906,7 +921,6 @@ export function AppShell({
   onLogout,
   onOpenDataPrivacy,
   hasProfile,
-  hasJobs,
   isPro,
   userEmail,
   kitCount = 0,
@@ -938,7 +952,6 @@ export function AppShell({
     onLogout,
     onOpenDataPrivacy,
     hasProfile,
-    hasJobs,
     isPro,
     userEmail,
     kitCount,

@@ -11,6 +11,7 @@ import {
   listJobKits as listJobKitsFn,
   createCheckoutSession as createCheckoutFn,
   verifyRazorpaySubscription as verifyRazorpaySubscriptionFn,
+  recordCheckoutOutcome as recordCheckoutOutcomeFn,
   deleteUserData as deleteUserDataFn,
 } from "./callable";
 import { openRazorpaySubscriptionCheckout } from "./razorpay";
@@ -55,52 +56,13 @@ import {
   KitDocumentViewer,
 } from "./ui";
 import { LandingPage } from "./landing/LandingPage";
+import { LinkedInOptimizerScreen } from "./linkedin/LinkedInOptimizerScreen";
 import { HelpFaqProvider, useHelpFaq } from "./help/HelpFaqContext";
 import { HelpFaqWidget } from "./help/HelpFaqWidget";
 import { applyDocumentSeo } from "./seo";
+import { GlobalStyle } from "./GlobalStyle";
 
 // ─── Shared UI ───────────────────────────────────────────────────────────────
-
-const GlobalStyle = () => (
-  <style>{`
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-    :root{
-      --c-bg:${C.bg};
-      --c-surface:${C.surface};
-      --c-border:${C.border};
-      --c-text:${C.text};
-      --c-sub:${C.sub};
-      --c-muted:${C.muted};
-      --c-accent:${C.accent};
-      --c-accent-hover:${C.accentHover};
-      --c-accent-soft:${C.accentSoft};
-      --c-accent-gradient:${C.accentGradient};
-      --c-surface-muted:${C.surfaceMuted};
-      --c-border-light:${C.borderLight};
-      --c-brand:${C.brandHighlight};
-      --c-success:${C.success};
-      --c-danger:${C.danger};
-      --c-warning:${C.warning};
-      --c-login-bg:${C.loginGradient};
-      --c-shadow-sm:${C.shadowSm};
-      --c-shadow-md:${C.shadowMd};
-    }
-    *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
-    body{background:${C.bg};color:${C.text};font-family:${font};width:100%;overflow-x:hidden;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;}
-    html{width:100%;overflow-x:hidden;}
-    #root{width:100%;max-width:100%;}
-    input,textarea,select{outline:none;font-family:${font};color:${C.text};}
-    input:focus-visible,textarea:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid ${C.accent};outline-offset:2px;}
-    ::selection{background:${C.accentSoft};color:${C.text};}
-    button{cursor:pointer;border:none;background:transparent;font-family:${font};}
-    .btn-premium{background:${C.accentGradient};color:#fff;box-shadow:${C.shadowAccent};border:none;font-weight:600;transition:transform 0.15s ease,box-shadow 0.2s ease,filter 0.15s ease;}
-    .btn-premium:hover:not(:disabled){filter:brightness(1.04);box-shadow:0 6px 20px rgba(15,118,110,0.32);transform:translateY(-1px);}
-    .btn-premium:active:not(:disabled){transform:translateY(0);}
-    button:active:not(:disabled){transform:scale(0.98);}
-    a{color:${C.accent};}
-  `}</style>
-);
-
 
 const Spinner = ({ size = 20, color = C.accent }) => (
   <div style={{ width: size, height: size, borderRadius: "50%", border: `2px solid ${C.border}`, borderTopColor: color, animation: "spin .8s linear infinite", flexShrink: 0 }} />
@@ -320,6 +282,7 @@ const UPGRADE_MESSAGES = {
   upload: "You've used your free resume upload for this month. Upgrade to Pro for unlimited uploads and updates.",
   kit: "You've used your free generation for this month. Upgrade to Pro for unlimited generations and regenerate.",
   kitOtherJob: "Free plan includes one document generation per month. Upgrade to Pro for more jobs and regenerate.",
+  linkedin: "LinkedIn optimiser is a Pro feature. Upgrade to score your profile and generate ready-to-paste improvements.",
   generic: "You've reached your free plan limit for this month.",
 };
 
@@ -333,7 +296,7 @@ function shouldPromptUpgrade(err) {
   if (!err) return false;
   const code = err.code || "";
   const msg = limitMessage(err);
-  if (msg.includes("FREE_LIMIT:") || msg.includes("FREE_KIT_USED")) return true;
+  if (msg.includes("FREE_LIMIT:") || msg.includes("FREE_KIT_USED") || msg.includes("PRO_ONLY:")) return true;
   if (code === "functions/resource-exhausted" || code === "resource-exhausted") {
     return /free tier|free plan|free kit|upgrade for unlimited|upgrade to pro/i.test(msg);
   }
@@ -345,6 +308,7 @@ function upgradeReasonFromError(err) {
   if (msg.includes("FREE_LIMIT:upload") || /resume upload/i.test(msg)) return UPGRADE_MESSAGES.upload;
   if (msg.includes("FREE_LIMIT:search") || /job search/i.test(msg)) return UPGRADE_MESSAGES.search;
   if (/another job/i.test(msg)) return UPGRADE_MESSAGES.kitOtherJob;
+  if (msg.includes("PRO_ONLY:linkedin") || /LinkedIn optimiser/i.test(msg)) return UPGRADE_MESSAGES.linkedin;
   if (msg.includes("FREE_KIT_USED") || /application kit/i.test(msg)) return UPGRADE_MESSAGES.kit;
   return UPGRADE_MESSAGES.generic;
 }
@@ -357,12 +321,17 @@ function isInsufficientSearchResponse(data) {
   return data?.insufficientResults === true;
 }
 
-function HelpFaqContextSync({ screen, showUpgrade }) {
+function HelpFaqContextSync({ screen, searchPhase, showUpgrade }) {
   const { setContext } = useHelpFaq();
   useEffect(() => {
-    const mobileDockVisible = screen === "jobs" || screen === "detail";
-    setContext({ screen, mobileDockVisible, upgradeModalOpen: showUpgrade });
-  }, [screen, showUpgrade, setContext]);
+    const onSearchResults = screen === "filters" && searchPhase === "results";
+    const mobileDockVisible = screen === "detail";
+    setContext({
+      screen: onSearchResults ? "search-results" : screen,
+      mobileDockVisible,
+      upgradeModalOpen: showUpgrade,
+    });
+  }, [screen, searchPhase, showUpgrade, setContext]);
   return null;
 }
 
@@ -371,6 +340,7 @@ const DashboardScreen = ({ userProfile, onProfileUpdate, showProBanner, onShowPr
   const hasSavedProfile = Boolean(savedProfile?.title);
 
   const [screen, setScreen] = useState(() => (hasSavedProfile ? "filters" : "resume"));
+  const [searchPhase, setSearchPhase] = useState("filters");
   const [profile, setProfile] = useState(() => savedProfile?.title ? savedProfile : null);
   const [jobs, setJobs] = useState([]);
   const [jobsListKey, setJobsListKey] = useState(0);
@@ -380,6 +350,7 @@ const DashboardScreen = ({ userProfile, onProfileUpdate, showProBanner, onShowPr
     filters: null,
     datePostedNotice: null,
     jsearchStats: null,
+    searchStats: null,
   });
   const [loadingMoreJobs, setLoadingMoreJobs] = useState(false);
   const [selectedJob, setSelectedJob] = useState(null);
@@ -424,9 +395,9 @@ const DashboardScreen = ({ userProfile, onProfileUpdate, showProBanner, onShowPr
   }, []);
 
   useEffect(() => {
-    trackScreen(screen);
-    setCrashScreen(screen);
-  }, [screen]);
+    trackScreen(searchPhase === "results" && screen === "filters" ? "search-results" : screen);
+    setCrashScreen(searchPhase === "results" && screen === "filters" ? "search-results" : screen);
+  }, [screen, searchPhase]);
 
   const refreshKitCount = useCallback(async () => {
     if (!hasSavedProfile) {
@@ -476,6 +447,7 @@ const DashboardScreen = ({ userProfile, onProfileUpdate, showProBanner, onShowPr
       setJobs([]);
       setSelectedJob(null);
       setGenerated({});
+      setSearchPhase("filters");
       setDataPrivacyOpen(false);
       await onProfileUpdate();
       setScreen("resume");
@@ -539,11 +511,12 @@ const DashboardScreen = ({ userProfile, onProfileUpdate, showProBanner, onShowPr
       filters: filtersData,
       datePostedNotice: data.datePostedNotice || null,
       jsearchStats: data.jsearchStats || null,
+      searchStats: data.searchStats || null,
     });
     setJobsListKey((k) => k + 1);
     if (data.currency?.symbol) setCurrencySymbol(data.currency.symbol);
     await onProfileUpdate();
-    setScreen("jobs");
+    setSearchPhase("results");
     return true;
   };
 
@@ -704,6 +677,23 @@ const DashboardScreen = ({ userProfile, onProfileUpdate, showProBanner, onShowPr
     }
   }, [profile, onProfileUpdate, openUpgrade, refreshKitCount]);
 
+  const handleNavigate = useCallback((id) => {
+    if (id === "filters") {
+      setSearchPhase(jobs.length > 0 ? "results" : "filters");
+    }
+    setScreen(id);
+  }, [jobs.length]);
+
+  const openSearchFilters = useCallback(() => {
+    setScreen("filters");
+    setSearchPhase("filters");
+  }, []);
+
+  const openSearchResults = useCallback(() => {
+    setScreen("filters");
+    setSearchPhase("results");
+  }, []);
+
   const handleUpgrade = async (plan) => {
     track("upgrade_click", { plan });
     track("checkout_start", { plan });
@@ -734,10 +724,20 @@ const DashboardScreen = ({ userProfile, onProfileUpdate, showProBanner, onShowPr
             alert(callableErrorMessage(verifyErr) || "Payment received but verification failed. Pro will unlock shortly via webhook.");
           }
         },
+        onDismiss: () => {
+          recordCheckoutOutcomeFn({
+            status: "dismissed",
+            plan: checkout.plan,
+            subscriptionId: checkout.subscriptionId,
+          }).catch(() => {});
+          track("checkout_return", { status: "dismissed", plan: checkout.plan });
+        },
       });
     } catch (err) {
       const msg = err?.message || "";
-      if (!/cancelled/i.test(msg)) {
+      if (/cancelled/i.test(msg)) {
+        /* onDismiss handler records outcome */
+      } else {
         alert(msg || "Payment setup failed");
       }
     }
@@ -766,19 +766,18 @@ const DashboardScreen = ({ userProfile, onProfileUpdate, showProBanner, onShowPr
   return (
     <AppShell
       screen={screen}
-      onNavigate={setScreen}
+      onNavigate={handleNavigate}
       onLogout={handleLogout}
       onOpenDataPrivacy={() => {
         setDeleteDataError("");
         setDataPrivacyOpen(true);
       }}
       hasProfile={hasSavedProfile}
-      hasJobs={jobs.length > 0}
       isPro={isPro}
       userEmail={auth.currentUser?.email || ""}
       kitCount={kitCount}
     >
-      <HelpFaqContextSync screen={screen} showUpgrade={showUpgrade} />
+      <HelpFaqContextSync screen={screen} searchPhase={searchPhase} showUpgrade={showUpgrade} />
       <DataPrivacyModal
         open={dataPrivacyOpen}
         onClose={() => !deletingData && setDataPrivacyOpen(false)}
@@ -811,8 +810,29 @@ const DashboardScreen = ({ userProfile, onProfileUpdate, showProBanner, onShowPr
         />
         </div>
       )}
-      {screen === "filters" && (
-        <div key="filters" className="screen-view">
+      {screen === "filters" && searchPhase === "results" && (
+        <div key="search-results" className="screen-view">
+        <SearchResultsScreen
+          key={jobsListKey}
+          jobs={jobs}
+          loading={searchLoading}
+          isPro={isPro}
+          currencySymbol={currencySymbol}
+          hasMoreApi={jobsMeta.hasMoreApi}
+          loadingMoreApi={loadingMoreJobs}
+          onLoadMoreApi={loadMoreJobsFromApi}
+          datePostedNotice={jobsMeta.datePostedNotice}
+          searchStats={jobsMeta.searchStats}
+          jsearchStats={jobsMeta.jsearchStats}
+          kitJobId={userProfile?.applicationKit?.kitKey || userProfile?.applicationKit?.jobId}
+          onSelectJob={openJobDetail}
+          onEditFilters={openSearchFilters}
+          onLogout={handleLogout}
+        />
+        </div>
+      )}
+      {screen === "filters" && searchPhase === "filters" && (
+        <div key="search-filters" className="screen-view">
         <FiltersScreen
           profile={profile}
           isPro={isPro}
@@ -822,25 +842,17 @@ const DashboardScreen = ({ userProfile, onProfileUpdate, showProBanner, onShowPr
           onPromptUpgrade={openUpgrade}
           onUpdateResume={() => setScreen("resume")}
           onLogout={handleLogout}
+          hasPastResults={jobs.length > 0}
+          onViewResults={openSearchResults}
         />
         </div>
       )}
-      {screen === "jobs" && (
-        <div key="jobs" className="screen-view">
-        <JobsScreen
-          key={jobsListKey}
-          jobs={jobs}
-          loading={searchLoading}
-          currencySymbol={currencySymbol}
-          hasMoreApi={jobsMeta.hasMoreApi}
-          loadingMoreApi={loadingMoreJobs}
-          onLoadMoreApi={loadMoreJobsFromApi}
-          datePostedNotice={jobsMeta.datePostedNotice}
-          jsearchStats={jobsMeta.jsearchStats}
-          kitJobId={userProfile?.applicationKit?.kitKey || userProfile?.applicationKit?.jobId}
+      {screen === "linkedin" && (
+        <div key="linkedin" className="screen-view">
+        <LinkedInOptimizerScreen
           isPro={isPro}
-          onSelectJob={openJobDetail}
-          onBack={() => setScreen("filters")}
+          onPromptUpgrade={openUpgrade}
+          onProfileUpdate={onProfileUpdate}
           onLogout={handleLogout}
         />
         </div>
@@ -852,7 +864,7 @@ const DashboardScreen = ({ userProfile, onProfileUpdate, showProBanner, onShowPr
           isPro={isPro}
           kitUsed={kitUsed}
           currencySymbol={currencySymbol}
-          onNavigateToJobs={() => setScreen(jobs.length > 0 ? "jobs" : "filters")}
+          onNavigateToJobs={openSearchResults}
           onKitCountChange={setKitCount}
           onPromptUpgrade={openUpgrade}
           onProfileUpdate={onProfileUpdate}
@@ -873,7 +885,7 @@ const DashboardScreen = ({ userProfile, onProfileUpdate, showProBanner, onShowPr
           needsResumeReupload={needsResumeReupload || userProfile?.hasStoredResumeText === false}
           onUpdateResume={() => setScreen("resume")}
           onGenerateDoc={generateDoc}
-          onBack={() => setScreen("jobs")}
+          onBack={openSearchResults}
           onLogout={handleLogout}
           isPro={isPro}
           kitUsed={kitUsed}
@@ -1035,13 +1047,46 @@ const DATE_POSTED_OPTIONS = [
   { id: "month", label: "Past month" },
 ];
 
-const FiltersScreen = ({ profile, isPro, searchLimitReached, loading, onSearch, onPromptUpgrade, onUpdateResume, onLogout }) => {
+const JOB_SOURCE_OPTIONS = [
+  { id: "jsearch", label: "JSearch" },
+  { id: "jooble", label: "Jooble" },
+  { id: "adzuna", label: "Adzuna" },
+];
+
+const EXPERIENCE_LEVEL_OPTIONS = [
+  { id: "any", label: "Any level" },
+  { id: "junior", label: "Junior / Entry" },
+  { id: "mid", label: "Mid-level" },
+  { id: "senior", label: "Senior / Lead" },
+];
+
+function formatJobProvider(provider) {
+  const key = String(provider || "jsearch").toLowerCase();
+  if (key === "jooble") return "Jooble";
+  if (key === "adzuna") return "Adzuna";
+  return "JSearch";
+}
+
+const FiltersScreen = ({
+  profile,
+  isPro,
+  searchLimitReached,
+  loading,
+  onSearch,
+  onPromptUpgrade,
+  onUpdateResume,
+  onLogout,
+  hasPastResults = false,
+  onViewResults,
+}) => {
   const [workplace, setWorkplace] = useState(["Remote", "Hybrid", "On-site"]);
   const [salary, setSalary] = useState([40, 150]);
   const [jobType, setJobType] = useState(["Full-time", "Part-time"]);
   const [datePosted, setDatePosted] = useState("week");
   const [region, setRegion] = useState(REGIONS[0]);
   const [cities, setCities] = useState([]);
+  const [sources, setSources] = useState(["jsearch", "jooble", "adzuna"]);
+  const [experienceLevel, setExperienceLevel] = useState("any");
   const topCities = TOP_CITIES_BY_REGION[region.label] || [];
   const isIndia = region.label === "India";
   const salaryMin = isIndia ? 3 : 20;
@@ -1061,12 +1106,12 @@ const FiltersScreen = ({ profile, isPro, searchLimitReached, loading, onSearch, 
         <MobileOnly>
           <Header
             title="Search jobs"
-            subtitle="Set filters to find roles that match your profile."
+            subtitle="Set filters, then run a search to see matching listings."
             onLogout={onLogout}
           />
           <StepProgress current="filters" />
         </MobileOnly>
-        <PageTitle title="Search jobs" subtitle="Set filters to find roles that match your profile." />
+        <PageTitle title="Search jobs" subtitle="Set filters, then run a search to see matching listings." />
       </div>
 
       <div className="filters-screen-content">
@@ -1194,6 +1239,37 @@ const FiltersScreen = ({ profile, isPro, searchLimitReached, loading, onSearch, 
               </div>
             </FilterSection>
 
+            <FilterSection label="Job sources">
+              <p style={{ fontSize: 11, color: C.muted, marginBottom: 10 }}>Search JSearch, Jooble, and Adzuna in parallel. Unconfigured sources are skipped automatically.</p>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {JOB_SOURCE_OPTIONS.map(({ id, label }) => (
+                  <Chip
+                    key={id}
+                    label={label}
+                    active={sources.includes(id)}
+                    onClick={() =>
+                      setSources((prev) =>
+                        prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]
+                      )
+                    }
+                  />
+                ))}
+              </div>
+            </FilterSection>
+
+            <FilterSection label="Experience level">
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {EXPERIENCE_LEVEL_OPTIONS.map(({ id, label }) => (
+                  <Chip
+                    key={id}
+                    label={label}
+                    active={experienceLevel === id}
+                    onClick={() => setExperienceLevel(id)}
+                  />
+                ))}
+              </div>
+            </FilterSection>
+
             <FilterSection label={isIndia ? "Salary (₹ LPA — lakhs per year)" : `Salary (${region.symbol}/yr, thousands)`} fullWidth>
               <div style={{ textAlign: "center", fontSize: 18, fontWeight: 700, marginBottom: 10 }}>
                 {isIndia ? `₹${salary[0]}–${salary[1]} LPA` : `${region.symbol}${salary[0]}k → ${region.symbol}${salary[1]}k`}
@@ -1203,7 +1279,7 @@ const FiltersScreen = ({ profile, isPro, searchLimitReached, loading, onSearch, 
             </FilterSection>
           </div>
 
-          <p style={{ fontSize: 12, color: C.sub, marginTop: 4 }}>Listings via JSearch · LinkedIn, Indeed, and other major boards</p>
+          <p style={{ fontSize: 12, color: C.sub, marginTop: 4 }}>Multi-source search · JSearch, Jooble, Adzuna — newest listings first</p>
 
           <div className="filters-actions">
             <button
@@ -1213,14 +1289,14 @@ const FiltersScreen = ({ profile, isPro, searchLimitReached, loading, onSearch, 
                   onPromptUpgrade(UPGRADE_MESSAGES.search);
                   return;
                 }
-                onSearch({ workplace, salary, jobType, datePosted, region, cities });
+                onSearch({ workplace, salary, jobType, datePosted, region, cities, sources, experienceLevel });
               }}
               disabled={loading}
               style={primaryBtnStyle(loading)}
             >
               {loading ? (
                 <>
-                  <Spinner size={18} color="#fff" /> Searching job boards and ranking matches…
+                  <Spinner size={18} color="#fff" /> Searching multiple job sources…
                 </>
               ) : searchLimitReached ? (
                 "Upgrade to search again"
@@ -1232,12 +1308,17 @@ const FiltersScreen = ({ profile, isPro, searchLimitReached, loading, onSearch, 
             </button>
             {loading && (
               <p className="filters-loading-note" style={{ fontSize: 12, color: C.sub, lineHeight: 1.5 }}>
-                Checking listings across LinkedIn, Indeed and more, then scoring fit to your resume. This can take up to ~20-40 seconds.
+                Checking JSearch, Jooble, and Adzuna in parallel, deduplicating listings, then scoring fit to your resume. This can take up to ~30-45 seconds.
               </p>
             )}
             <button type="button" onClick={onUpdateResume} style={outlineBtnStyle}>
               Update resume / change profile
             </button>
+            {hasPastResults && (
+              <button type="button" onClick={onViewResults} style={outlineBtnStyle}>
+                View last results
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -1536,7 +1617,32 @@ const ApplicationKitScreen = ({
 
 const JOBS_PER_PAGE = 10;
 
-const JobsScreen = ({
+const JOB_SORT_OPTIONS = [
+  { id: "recent", label: "Most recent" },
+  { id: "score", label: "Best match" },
+];
+
+function jobPostedTimestamp(job) {
+  const raw = job.posted_at || job.api?.job_posted_at_datetime_utc;
+  if (!raw) return 0;
+  const t = new Date(raw).getTime();
+  return Number.isNaN(t) ? 0 : t;
+}
+
+function sortJobResults(jobs, sortBy) {
+  return [...jobs].sort((a, b) => {
+    if (sortBy === "score") {
+      const scoreDiff = (b.match_score || 0) - (a.match_score || 0);
+      if (scoreDiff !== 0) return scoreDiff;
+      return jobPostedTimestamp(b) - jobPostedTimestamp(a);
+    }
+    const dateDiff = jobPostedTimestamp(b) - jobPostedTimestamp(a);
+    if (dateDiff !== 0) return dateDiff;
+    return (b.match_score || 0) - (a.match_score || 0);
+  });
+}
+
+const SearchResultsScreen = ({
   jobs,
   loading,
   currencySymbol,
@@ -1544,21 +1650,56 @@ const JobsScreen = ({
   loadingMoreApi,
   onLoadMoreApi,
   datePostedNotice,
+  searchStats,
   jsearchStats,
   kitJobId,
   isPro,
   onSelectJob,
-  onBack,
+  onEditFilters,
   onLogout,
 }) => {
-  const jsearchRaw = jsearchStats?.rawCount ?? null;
+  const jsearchRaw = jsearchStats?.rawCount ?? searchStats?.jsearchRaw ?? null;
   const apiReturnedNothing = jsearchRaw === 0;
+  const [sortBy, setSortBy] = useState("recent");
+  const [sortMenuOpen, setSortMenuOpen] = useState(false);
+  const sortMenuRef = useRef(null);
   const [page, setPage] = useState(1);
-  const totalPages = Math.max(1, Math.ceil(jobs.length / JOBS_PER_PAGE));
+  const sortedJobs = useMemo(() => sortJobResults(jobs, sortBy), [jobs, sortBy]);
+  const totalPages = Math.max(1, Math.ceil(sortedJobs.length / JOBS_PER_PAGE));
   const safePage = Math.min(page, totalPages);
   const start = (safePage - 1) * JOBS_PER_PAGE;
-  const pageJobs = jobs.slice(start, start + JOBS_PER_PAGE);
-  const showingEnd = Math.min(start + JOBS_PER_PAGE, jobs.length);
+  const pageJobs = sortedJobs.slice(start, start + JOBS_PER_PAGE);
+  const showingEnd = Math.min(start + JOBS_PER_PAGE, sortedJobs.length);
+
+  useEffect(() => {
+    setPage(1);
+  }, [jobs.length, sortBy]);
+
+  useEffect(() => {
+    if (!sortMenuOpen) return undefined;
+    const onPointerDown = (event) => {
+      if (sortMenuRef.current && !sortMenuRef.current.contains(event.target)) {
+        setSortMenuOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [sortMenuOpen]);
+
+  const sortLabel = sortBy === "score" ? "best match" : "most recent";
+  const subtitle = loading && jobs.length === 0
+    ? "Searching job boards + scoring matches for your profile…"
+    : `${jobs.length} jobs · ${sortLabel} · page ${safePage} of ${totalPages}`;
+
+  const handleSortChange = (nextSort) => {
+    if (nextSort === sortBy) {
+      setSortMenuOpen(false);
+      return;
+    }
+    setSortBy(nextSort);
+    setSortMenuOpen(false);
+    track("search_sort", { sort: nextSort });
+  };
 
   return (
     <PageMain variant="full">
@@ -1568,26 +1709,66 @@ const JobsScreen = ({
             <div style={{ display: "flex", alignItems: "flex-start", gap: 10, minWidth: 0, flex: 1 }}>
               <MobileNavToggle style={{ marginTop: 2 }} />
               <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontSize: 22, fontWeight: 700, color: C.text }}>Job listings</div>
-                <div style={{ fontSize: 13, color: C.sub, marginTop: 4 }}>
-                  {loading && jobs.length === 0
-                    ? "Searching job boards + scoring matches for your profile…"
-                    : `${jobs.length} jobs · newest first · page ${safePage} of ${totalPages}`}
-                </div>
+                <nav className="search-route-crumb" aria-label="Search navigation">
+                  <button type="button" onClick={onEditFilters} className="search-route-crumb__link">
+                    Search jobs
+                  </button>
+                  <span className="search-route-crumb__sep">›</span>
+                  <span className="search-route-crumb__current">Results</span>
+                </nav>
+                <div style={{ fontSize: 22, fontWeight: 700, color: C.text, marginTop: 6 }}>Job results</div>
+                <div style={{ fontSize: 13, color: C.sub, marginTop: 4 }}>{subtitle}</div>
               </div>
             </div>
             <LogoutBtn onLogout={onLogout} />
           </div>
-          <StepProgress current="jobs" />
+          <StepProgress current="filters" />
         </MobileOnly>
-        <PageTitle
-          title="Job listings"
-          subtitle={
-            loading && jobs.length === 0
-              ? "Searching job boards + ranking results for your resume…"
-              : `${jobs.length} jobs · newest first · page ${safePage} of ${totalPages}`
-          }
-        />
+
+        <div className="desktop-only search-route-crumb-wrap">
+          <nav className="search-route-crumb" aria-label="Search navigation">
+            <button type="button" onClick={onEditFilters} className="search-route-crumb__link">
+              Search jobs
+            </button>
+            <span className="search-route-crumb__sep">›</span>
+            <span className="search-route-crumb__current">Results</span>
+          </nav>
+        </div>
+        <PageTitle title="Job results" subtitle={subtitle} />
+        <div className="jobs-results-toolbar">
+          <button type="button" className="jobs-toolbar-btn" onClick={onEditFilters}>
+            Edit filter
+          </button>
+          {jobs.length > 0 && (
+            <div className="jobs-sort-menu" ref={sortMenuRef}>
+              <button
+                type="button"
+                className="jobs-toolbar-btn"
+                onClick={() => setSortMenuOpen((open) => !open)}
+                aria-expanded={sortMenuOpen}
+                aria-haspopup="menu"
+              >
+                Sort by
+              </button>
+              {sortMenuOpen && (
+                <div className="jobs-sort-menu__dropdown" role="menu">
+                  {JOB_SORT_OPTIONS.map(({ id, label }) => (
+                    <button
+                      key={id}
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={sortBy === id}
+                      className={`jobs-sort-menu__option${sortBy === id ? " jobs-sort-menu__option--active" : ""}`}
+                      onClick={() => handleSortChange(id)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="jobs-screen-content">
@@ -1625,6 +1806,9 @@ const JobsScreen = ({
                 Widen salary, date, or workplace options.
               </>
             )}
+            <button type="button" onClick={onEditFilters} style={{ ...outlineBtnStyle, marginTop: 20 }}>
+              Edit filter
+            </button>
           </div>
         ) : (
           <>
@@ -1682,7 +1866,28 @@ const JobsScreen = ({
                           </span>
                         )}
                         <span style={{ fontSize: 11, color: C.muted }}>{job.workplace} · {job.posted}</span>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: C.accent, background: C.accentSoft, padding: "2px 8px", borderRadius: 100 }}>
+                          {formatJobProvider(job.provider)}
+                        </span>
                       </div>
+                      {(job.matching_skills?.length > 0 || job.experience_fit) && (
+                        <div style={{ marginTop: 8, fontSize: 11, color: C.sub, lineHeight: 1.45 }}>
+                          {job.matching_skills?.length > 0 && (
+                            <div style={{ color: C.success, marginBottom: 2 }}>
+                              ✓ {job.matching_skills.slice(0, 3).join(", ")}
+                              {job.matching_skills.length > 3 ? "…" : ""}
+                            </div>
+                          )}
+                          {job.missing_skills?.length > 0 && (
+                            <div style={{ color: C.muted, marginBottom: 2 }}>
+                              ○ Gap: {job.missing_skills.slice(0, 2).join(", ")}
+                            </div>
+                          )}
+                          {job.experience_fit && (
+                            <div>{job.experience_fit}</div>
+                          )}
+                        </div>
+                      )}
                       <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8 }}>
                         <span
                           className="match-badge-pop"
@@ -1705,12 +1910,6 @@ const JobsScreen = ({
               );
             })}
 
-            <div className="desktop-actions">
-              <button type="button" onClick={onBack} style={outlineBtnStyle}>
-                Back to filters
-              </button>
-            </div>
-
             <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
               <button
                 type="button"
@@ -1731,7 +1930,7 @@ const JobsScreen = ({
             </div>
 
             <p style={{ textAlign: "center", fontSize: 12, color: C.muted, marginTop: 10 }}>
-              Showing {start + 1}–{showingEnd} of {jobs.length}
+              Showing {start + 1}–{showingEnd} of {sortedJobs.length}
             </p>
 
             {hasMoreApi && (
@@ -1760,10 +1959,6 @@ const JobsScreen = ({
           </>
         )}
         </div>
-      </div>
-
-      <div className="mobile-dock">
-        <button type="button" onClick={onBack} style={{ width: "100%", padding: 14, borderRadius: 12, background: C.surface, color: C.text, fontSize: 14, fontWeight: 600, border: `1px solid ${C.border}` }}>Back to filters</button>
       </div>
     </PageMain>
   );
@@ -2079,14 +2274,6 @@ const JobDetailScreen = ({
     }
   };
 
-  useEffect(() => {
-    if (loadingKit) return;
-    const isDesktop = window.matchMedia("(min-width: 1024px)").matches;
-    if (!isDesktop && mainView !== "kit") return;
-    if (canGenerate && !generated[tab]) requestDoc(tab);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, canGenerate, mainView, loadingKit]);
-
   const kitPanel = (
     <KitDocumentViewer
       generated={generated}
@@ -2117,7 +2304,7 @@ const JobDetailScreen = ({
             <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flex: 1 }}>
               <MobileNavToggle />
               <button type="button" onClick={onBack} style={{ fontSize: 13, color: C.accent, fontWeight: 600, padding: "4px 0" }}>
-                Back to jobs
+                Back to search
               </button>
             </div>
             <LogoutBtn onLogout={onLogout} small />
@@ -2159,7 +2346,7 @@ const JobDetailScreen = ({
         </div>
         <div className="desktop-actions" style={{ marginBottom: 16 }}>
           <button type="button" onClick={onBack} style={outlineBtnStyle}>
-            Back to jobs
+            Back to search
           </button>
         </div>
       </div>
@@ -2193,7 +2380,7 @@ const JobDetailScreen = ({
 
       <div className="mobile-dock">
         <button type="button" onClick={onBack} style={{ width: "100%", padding: 10, color: C.sub, fontSize: 13 }}>
-          Back to jobs
+          Back to search
         </button>
       </div>
     </PageMain>
@@ -2206,6 +2393,7 @@ const FREE_VS_PRO = [
   { feature: "Resume uploads", free: "1/month", pro: "Unlimited" },
   { feature: "Job searches", free: "1/month", pro: "Unlimited" },
   { feature: "Application kits", free: "1 job/month", pro: "Unlimited" },
+  { feature: "LinkedIn optimiser", free: "—", pro: "Included" },
   { feature: "AI documents", free: "Resume + cover + email", pro: "Same, unlimited" },
 ];
 

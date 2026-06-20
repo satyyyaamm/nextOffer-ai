@@ -13,6 +13,9 @@ const PROJECT_ID = process.env.REACT_APP_FIREBASE_PROJECT_ID;
 const TIMEOUT_MS = {
   getUserProfile: 30_000,
   parseResume: 100_000,
+  analyzeLinkedIn: 130_000,
+  getLinkedInAnalysis: 30_000,
+  generateLinkedInSection: 100_000,
   searchJobs: 180_000,
   generateDocument: 170_000,
   getJobKit: 30_000,
@@ -20,6 +23,9 @@ const TIMEOUT_MS = {
   createCheckoutSession: 60_000,
   deleteUserData: 120_000,
   logClientError: 10_000,
+  getAdminDashboard: 120_000,
+  listAdminUsers: 60_000,
+  recordCheckoutOutcome: 15_000,
   default: 30_000,
 };
 
@@ -121,10 +127,15 @@ export const logClientError = (data) => callFunction("logClientError", data, TIM
 
 export const getUserProfile = () => callFunction("getUserProfile", {}, TIMEOUT_MS.getUserProfile);
 export const parseResume = (data) => callFunction("parseResume", data, TIMEOUT_MS.parseResume);
+export const analyzeLinkedIn = (data) => callFunction("analyzeLinkedIn", data, TIMEOUT_MS.analyzeLinkedIn);
+export const getLinkedInAnalysis = () => callFunction("getLinkedInAnalysis", {}, TIMEOUT_MS.getLinkedInAnalysis);
+export const generateLinkedInSection = (data) =>
+  callFunction("generateLinkedInSection", data, TIMEOUT_MS.generateLinkedInSection);
 export const searchJobs = (data) => callFunction("searchJobs", data, TIMEOUT_MS.searchJobs);
 export const generateDocument = (data) => callFunction("generateDocument", data, TIMEOUT_MS.generateDocument);
 export const getJobKit = (data) => callFunction("getJobKit", data, TIMEOUT_MS.getJobKit);
 export const listJobKits = () => callFunction("listJobKits", {}, TIMEOUT_MS.listJobKits);
 export const createCheckoutSession = (data) => callFunction("createCheckoutSession", data, TIMEOUT_MS.createCheckoutSession);
 export const verifyRazorpaySubscription = (data) => callFunction("verifyRazorpaySubscription", data, TIMEOUT_MS.createCheckoutSession);
+export const recordCheckoutOutcome = (data) => callFunction("recordCheckoutOutcome", data, TIMEOUT_MS.recordCheckoutOutcome);
 export const deleteUserData = (data) => callFunction("deleteUserData", data, TIMEOUT_MS.deleteUserData);
